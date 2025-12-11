@@ -1,0 +1,16 @@
+# Ignore SQL files - PostgreSQL $$ syntax breaks with formatting
+*.sql
+
+# Build outputs
+.next/
+out/
+dist/
+build/
+
+# Dependencies
+node_modules/
+
+# Lock files
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
