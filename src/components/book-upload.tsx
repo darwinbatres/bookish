@@ -175,7 +175,7 @@ export function BookUpload({ onBookAdded }: BookUploadProps) {
             successCount++;
             onBookAdded();
           } catch (err) {
-            console.error(`[Shelf] Upload error for ${file.name}:`, err);
+            console.error(`[Bookish] Upload error for ${file.name}:`, err);
             updateUpload(i, { status: "error" });
           }
         }
@@ -195,7 +195,7 @@ export function BookUpload({ onBookAdded }: BookUploadProps) {
         // Clear uploads after delay
         setTimeout(() => setUploads([]), 2000);
       } catch (err) {
-        console.error("[Shelf] Upload error:", err);
+        console.error("[Bookish] Upload error:", err);
         const message =
           err instanceof Error ? err.message : "Failed to upload file";
         setError(message);

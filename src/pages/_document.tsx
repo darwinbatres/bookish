@@ -13,21 +13,21 @@ export default function Document() {
           name="keywords"
           content="book reader, pdf reader, epub reader, ebook, reading app"
         />
-        <meta name="author" content="Shelf" />
+        <meta name="author" content="Bookish" />
 
         {/* Open Graph */}
         <meta property="og:type" content="website" />
         <meta property="og:locale" content="en_US" />
-        <meta property="og:title" content="Shelf - Personal Book Reader" />
+        <meta property="og:title" content="Bookish - Personal Book Reader" />
         <meta
           property="og:description"
           content="A minimalist, privacy-focused personal book reader."
         />
-        <meta property="og:site_name" content="Shelf" />
+        <meta property="og:site_name" content="Bookish" />
 
         {/* Twitter */}
         <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content="Shelf - Personal Book Reader" />
+        <meta name="twitter:title" content="Bookish - Personal Book Reader" />
         <meta
           name="twitter:description"
           content="A minimalist, privacy-focused personal book reader."

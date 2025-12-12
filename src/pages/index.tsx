@@ -58,7 +58,7 @@ export default function Home() {
       const book = await fetchBook(currentBookId);
       setCurrentBook(book);
     } catch (error) {
-      console.error("[Shelf] Failed to fetch book:", error);
+      console.error("[Bookish] Failed to fetch book:", error);
     }
   }, [currentBookId]);
 
@@ -145,7 +145,7 @@ export default function Home() {
     return (
       <>
         <Head>
-          <title>Shelf - Personal Book Reader</title>
+          <title>Bookish - Personal Book Reader</title>
         </Head>
         <div className="flex items-center justify-center h-dvh bg-background">
           <div className="animate-pulse text-muted-foreground">Loading...</div>
@@ -163,7 +163,7 @@ export default function Home() {
     return (
       <>
         <Head>
-          <title>Shelf - Personal Book Reader</title>
+          <title>Bookish - Personal Book Reader</title>
         </Head>
         <div className="flex flex-col lg:flex-row h-dvh overflow-hidden bg-background">
           <div className="hidden lg:flex shrink-0 w-52 xl:w-56 bg-sidebar border-r border-border" />
@@ -234,16 +234,16 @@ export default function Home() {
       <Head>
         <title>
           {currentBook
-            ? `${currentBook.title} | Shelf`
+            ? `${currentBook.title} | Bookish`
             : activeView === "stats"
-              ? "Stats | Shelf"
+              ? "Stats | Bookish"
               : activeView === "settings"
-                ? "Settings | Shelf"
+                ? "Settings | Bookish"
                 : activeView === "wishlist"
-                  ? "Wishlist | Shelf"
+                  ? "Wishlist | Bookish"
                   : activeView === "favorites"
-                    ? "Favorites | Shelf"
-                    : "Shelf - Personal Book Reader"}
+                    ? "Favorites | Bookish"
+                    : "Bookish - Personal Book Reader"}
         </title>
       </Head>
       <div className="flex flex-col lg:flex-row h-dvh overflow-hidden bg-background">

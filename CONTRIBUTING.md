@@ -1,6 +1,6 @@
-# Contributing to Shelf Book Reader
+# Contributing to Bookish
 
-First off, thank you for considering contributing to Shelf Book Reader! It's people like you that make this project better.
+First off, thank you for considering contributing to Bookish! It's people like you that make this project better.
 
 ## Code of Conduct
 
@@ -42,8 +42,8 @@ Feature suggestions are welcome! Please:
 
 ```bash
 # Clone your fork
-git clone https://github.com/your-username/shelf-book-reader.git
-cd shelf-book-reader
+git clone https://github.com/your-username/bookish.git
+cd bookish
 
 # Install dependencies
 pnpm install

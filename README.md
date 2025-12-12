@@ -1,4 +1,4 @@
-# 📚 Shelf - Personal Book Reader
+# 📚 Bookish - Personal Book Reader
 
 A minimalist, privacy-focused personal book reader. Upload and read PDFs and EPUBs with bookmarks, notes, reading time tracking, favorites, wishlists, collections, and custom book covers—all stored securely with PostgreSQL and S3-compatible storage.
 
@@ -46,8 +46,8 @@ A minimalist, privacy-focused personal book reader. Upload and read PDFs and EPU
 
 ```bash
 # Clone and enter the project
-git clone https://github.com/yourusername/shelf-book-reader.git
-cd shelf-book-reader
+git clone https://github.com/darwinbatres/bookish.git
+cd bookish
 
 # Copy the example environment (works out of the box!)
 cp .env.example .env
@@ -70,8 +70,8 @@ That's it! The app, database, and S3 storage are all running.
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/shelf-book-reader.git
-cd shelf-book-reader
+git clone https://github.com/darwinbatres/bookish.git
+cd bookish
 
 # Install dependencies
 pnpm install
@@ -211,7 +211,7 @@ All required environment variables must be set - **no hardcoded defaults for sen
 
 ### S3 Architecture
 
-Shelf uses an **API Gateway pattern** for secure file access:
+Bookish uses an **API Gateway pattern** for secure file access:
 
 - **Downloads/Reading**: Files are streamed through the app server via `/api/books/stream`. The browser never accesses S3 directly, so only the app server needs to reach S3. This works on all devices (mobile, desktop) without network configuration issues.
 
@@ -222,7 +222,7 @@ Shelf uses an **API Gateway pattern** for secure file access:
 Files are organized in the S3 bucket as follows:
 
 ```plaintext
-shelf-books/
+bookish-books/
 ├── books/           # Book files (PDF, EPUB)
 │   └── {bookId}/
 │       └── {timestamp}.{ext}
@@ -301,11 +301,11 @@ curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloud
 chmod +x /usr/local/bin/cloudflared
 
 # Create and configure tunnel
-cloudflared tunnel create shelf
-cloudflared tunnel route dns shelf shelf.yourdomain.com
+cloudflared tunnel create bookish
+cloudflared tunnel route dns bookish bookish.yourdomain.com
 
 # Run tunnel
-cloudflared tunnel run --token YOUR_TOKEN shelf
+cloudflared tunnel run --token YOUR_TOKEN bookish
 ```
 
 #### Cloudflare Tunnel Setup Steps
@@ -313,10 +313,10 @@ cloudflared tunnel run --token YOUR_TOKEN shelf
 1. Go to [Cloudflare Zero Trust Dashboard](https://one.dash.cloudflare.com)
 2. Navigate to **Networks → Tunnels → Create a tunnel**
 3. Choose **Cloudflared** connector type
-4. Name your tunnel (e.g., "shelf")
+4. Name your tunnel (e.g., "bookish")
 5. Copy the token (starts with `eyJ...`)
 6. Add public hostname:
-   - **Subdomain**: `shelf` (or your choice)
+   - **Subdomain**: `bookish` (or your choice)
    - **Domain**: `yourdomain.com`
    - **Service**: `http://app:3000` (for Docker) or `http://localhost:3000`
 7. Save and deploy
@@ -335,8 +335,8 @@ curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER
 
 # 3. Clone repository
-git clone https://github.com/yourusername/shelf-book-reader.git
-cd shelf-book-reader
+git clone https://github.com/darwinbatres/bookish.git
+cd bookish
 
 # 4. Create production .env
 cp .env.example .env
@@ -368,7 +368,7 @@ docker compose logs -f
 ## 📁 Project Structure
 
 ```plaintext
-shelf-book-reader/
+bookish/
 ├── src/
 │   ├── components/      # React components
 │   │   ├── ui/          # shadcn/ui primitives

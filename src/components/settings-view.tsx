@@ -26,8 +26,8 @@ import type { PublicSettings } from "@/pages/api/settings";
 import type { LibraryViewMode } from "@/types";
 
 // Storage keys (same as library-view.tsx)
-const VIEW_MODE_KEY = "shelf-library-view-mode";
-const PAGE_SIZE_KEY = "shelf-library-page-size";
+const VIEW_MODE_KEY = "bookish-library-view-mode";
+const PAGE_SIZE_KEY = "bookish-library-page-size";
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 const MAX_FILE_SIZE_OPTIONS = [25, 50, 100, 200, 500, 1024, 2048];
@@ -519,7 +519,7 @@ export function SettingsView() {
               </div>
             </div>
             <p className="text-xs text-muted-foreground mt-4 pt-4 border-t text-center">
-              Shelf Book Reader — A privacy-focused personal book reader
+              Bookish — A privacy-focused personal book reader
             </p>
           </CardContent>
         </Card>

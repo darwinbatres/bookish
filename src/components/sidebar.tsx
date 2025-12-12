@@ -62,7 +62,7 @@ export function Sidebar({
     >
       <div className="p-4 xl:p-5 pb-5 xl:pb-6">
         <h1 className="text-base xl:text-lg font-bold tracking-tight text-sidebar-foreground">
-          Shelf
+          Bookish
         </h1>
       </div>
 

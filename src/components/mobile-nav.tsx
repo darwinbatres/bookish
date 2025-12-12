@@ -62,7 +62,7 @@ export function MobileNav({
   return (
     <>
       <header className="lg:hidden flex items-center justify-between px-4 py-3 border-b border-border bg-card safe-area-inset-top shrink-0">
-        <h1 className="text-base font-bold tracking-tight">Shelf</h1>
+        <h1 className="text-base font-bold tracking-tight">Bookish</h1>
         <button
           onClick={() => setIsOpen(!isOpen)}
           className="p-2.5 -mr-2 hover:bg-secondary rounded-lg transition-colors active:scale-95"

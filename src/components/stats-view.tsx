@@ -83,7 +83,7 @@ export function StatsView() {
       const data = await fetchStats();
       setStats(data);
     } catch (err) {
-      console.error("[Shelf] Failed to fetch stats:", err);
+      console.error("[Bookish] Failed to fetch stats:", err);
       setError("Failed to load statistics");
     } finally {
       setIsLoading(false);

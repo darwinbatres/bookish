@@ -58,15 +58,13 @@ export function validateCredentials(
   username: string,
   password: string
 ): boolean {
-  return (
-    username === config.auth.username && password === config.auth.password
-  );
+  return username === config.auth.username && password === config.auth.password;
 }
 
 /**
  * Cookie name for session token
  */
-export const SESSION_COOKIE_NAME = "shelf_session";
+export const SESSION_COOKIE_NAME = "bookish_session";
 
 /**
  * Get cookie options for session

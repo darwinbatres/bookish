@@ -36,8 +36,8 @@ interface LibraryViewProps {
 }
 
 // Store view preference in localStorage
-const VIEW_MODE_KEY = "shelf-library-view-mode";
-const PAGE_SIZE_KEY = "shelf-library-page-size";
+const VIEW_MODE_KEY = "bookish-library-view-mode";
+const PAGE_SIZE_KEY = "bookish-library-page-size";
 
 function getStoredViewMode(): LibraryViewMode {
   if (typeof window === "undefined") return "list";

@@ -175,7 +175,7 @@ export function BookTable({
       });
       onBooksChange();
     } catch (error) {
-      console.error("[Shelf] Failed to delete book:", error);
+      console.error("[Bookish] Failed to delete book:", error);
       toast("Failed to delete book", {
         description: "Please try again later.",
       });

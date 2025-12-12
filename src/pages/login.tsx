@@ -45,7 +45,7 @@ export default function LoginPage() {
   return (
     <>
       <Head>
-        <title>Login | Shelf</title>
+        <title>Login | Bookish</title>
       </Head>
       <div className="h-dvh flex items-center justify-center bg-background p-4 safe-area-inset">
         <div className="w-full max-w-sm">
@@ -53,7 +53,7 @@ export default function LoginPage() {
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary text-primary-foreground mb-4">
               <BookOpen className="w-8 h-8" />
             </div>
-            <h1 className="text-2xl font-bold tracking-tight">Shelf</h1>
+            <h1 className="text-2xl font-bold tracking-tight">Bookish</h1>
             <p className="text-muted-foreground text-sm mt-1">
               Sign in to your personal library
             </p>

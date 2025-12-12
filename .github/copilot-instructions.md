@@ -1,4 +1,4 @@
-# Copilot Instructions for Shelf Book Reader
+# Copilot Instructions for Bookish
 
 ## Important Workflow Rules
 

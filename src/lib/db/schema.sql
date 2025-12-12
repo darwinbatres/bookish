@@ -1,4 +1,4 @@
--- Shelf Book Reader Database Schema
+-- Bookish Database Schema
 -- PostgreSQL 16+
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";

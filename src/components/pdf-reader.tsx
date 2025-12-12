@@ -93,7 +93,7 @@ const IsolatedPdfViewer = memo(
     );
 
     const handleLoadError = useCallback((error: Error) => {
-      console.error("[Shelf] PDF load error:", error);
+      console.error("[Bookish] PDF load error:", error);
       setLoadError(error.message || "Failed to load PDF");
     }, []);
 
@@ -305,7 +305,7 @@ export function PdfReader({ book, onBookUpdate, onBack }: PdfReaderProps) {
         sessionIdRef.current = session.id;
         sessionStartPageRef.current = book.currentPage;
       } catch (error) {
-        console.error("[Shelf] Failed to start reading session:", error);
+        console.error("[Bookish] Failed to start reading session:", error);
       }
     }
     startSession();
@@ -314,7 +314,7 @@ export function PdfReader({ book, onBookUpdate, onBack }: PdfReaderProps) {
     return () => {
       if (sessionIdRef.current) {
         endReadingSession(book.id, sessionIdRef.current, currentPage).catch(
-          (err) => console.error("[Shelf] Failed to end session:", err)
+          (err) => console.error("[Bookish] Failed to end session:", err)
         );
       }
     };
@@ -343,7 +343,7 @@ export function PdfReader({ book, onBookUpdate, onBack }: PdfReaderProps) {
           });
           onBookUpdate();
         })
-        .catch((err) => console.error("[Shelf] Failed to mark complete:", err));
+        .catch((err) => console.error("[Bookish] Failed to mark complete:", err));
     }
   }, [currentPage, totalPages, book.id, book.title, celebrate, onBookUpdate]);
 
@@ -356,7 +356,7 @@ export function PdfReader({ book, onBookUpdate, onBack }: PdfReaderProps) {
         const { downloadUrl } = await getDownloadUrl(book.s3Key);
         setPdfUrl(downloadUrl);
       } catch (error) {
-        console.error("[Shelf] Failed to get PDF URL:", error);
+        console.error("[Bookish] Failed to get PDF URL:", error);
         setLoadError("Failed to load PDF. Please try again.");
       } finally {
         setIsLoadingPdf(false);
@@ -371,7 +371,7 @@ export function PdfReader({ book, onBookUpdate, onBack }: PdfReaderProps) {
       const data = await fetchBookmarks(bookIdRef.current);
       setBookmarks(data);
     } catch (error) {
-      console.error("[Shelf] Failed to fetch bookmarks:", error);
+      console.error("[Bookish] Failed to fetch bookmarks:", error);
     }
   }, []);
 
@@ -380,7 +380,7 @@ export function PdfReader({ book, onBookUpdate, onBack }: PdfReaderProps) {
       const data = await fetchNotes(bookIdRef.current);
       setNotes(data);
     } catch (error) {
-      console.error("[Shelf] Failed to fetch notes:", error);
+      console.error("[Bookish] Failed to fetch notes:", error);
     }
   }, []);
 
@@ -395,7 +395,7 @@ export function PdfReader({ book, onBookUpdate, onBack }: PdfReaderProps) {
     try {
       await updateBook(bookIdRef.current, { currentPage: page });
     } catch (error) {
-      console.error("[Shelf] Failed to update page:", error);
+      console.error("[Bookish] Failed to update page:", error);
     }
   }, []);
 
@@ -406,7 +406,7 @@ export function PdfReader({ book, onBookUpdate, onBack }: PdfReaderProps) {
         await updateBook(bookIdRef.current, { totalPages: total });
         onBookUpdate();
       } catch (error) {
-        console.error("[Shelf] Failed to update total pages:", error);
+        console.error("[Bookish] Failed to update total pages:", error);
       }
     },
     [onBookUpdate]
@@ -424,7 +424,7 @@ export function PdfReader({ book, onBookUpdate, onBack }: PdfReaderProps) {
       }
       await refreshBookmarks();
     } catch (error) {
-      console.error("[Shelf] Failed to toggle bookmark:", error);
+      console.error("[Bookish] Failed to toggle bookmark:", error);
       toast("Failed to update bookmark");
     }
   }, [bookmarks, currentPage, refreshBookmarks]);
@@ -436,7 +436,7 @@ export function PdfReader({ book, onBookUpdate, onBack }: PdfReaderProps) {
         await refreshBookmarks();
         toast("Bookmark removed", { description: `Page ${page}` });
       } catch (error) {
-        console.error("[Shelf] Failed to remove bookmark:", error);
+        console.error("[Bookish] Failed to remove bookmark:", error);
         toast("Failed to remove bookmark");
       }
     },
@@ -450,7 +450,7 @@ export function PdfReader({ book, onBookUpdate, onBack }: PdfReaderProps) {
         await refreshNotes();
         toast("Note added", { description: `Page ${currentPage}` });
       } catch (error) {
-        console.error("[Shelf] Failed to add note:", error);
+        console.error("[Bookish] Failed to add note:", error);
         toast("Failed to add note");
       }
     },
@@ -464,7 +464,7 @@ export function PdfReader({ book, onBookUpdate, onBack }: PdfReaderProps) {
         await refreshNotes();
         toast("Note deleted");
       } catch (error) {
-        console.error("[Shelf] Failed to remove note:", error);
+        console.error("[Bookish] Failed to remove note:", error);
         toast("Failed to delete note");
       }
     },
@@ -476,7 +476,7 @@ export function PdfReader({ book, onBookUpdate, onBack }: PdfReaderProps) {
     try {
       await updateBook(bookIdRef.current, { currentPage: page });
     } catch (error) {
-      console.error("[Shelf] Failed to update page:", error);
+      console.error("[Bookish] Failed to update page:", error);
     }
   }, []);
 
