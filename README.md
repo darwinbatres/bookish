@@ -165,7 +165,7 @@ All required environment variables must be set - **no hardcoded defaults for sen
 | `POSTGRES_SSL_MODE`        | SSL mode (disable/require/verify-ca) | No       | `disable`                              |
 | **S3 Storage**             |                                      |          |                                        |
 | `S3_ENDPOINT`              | S3/Spaces endpoint (internal)        | **Yes**  | -                                      |
-| `S3_PUBLIC_ENDPOINT`       | S3 endpoint for browser access       | No       | _(same as S3_ENDPOINT)_                |
+| `S3_PUBLIC_ENDPOINT`       | S3 endpoint for uploads (browser)    | No       | _(same as S3_ENDPOINT)_                |
 | `S3_REGION`                | AWS region                           | **Yes**  | -                                      |
 | `S3_BUCKET`                | Bucket name                          | **Yes**  | -                                      |
 | `S3_ACCESS_KEY_ID`         | Access key                           | **Yes**  | -                                      |
@@ -182,6 +182,14 @@ All required environment variables must be set - **no hardcoded defaults for sen
 | `RATE_LIMIT_RPM`           | Requests per minute limit            | No       | `100`                                  |
 
 > **Note:** Max file upload size is now configured in the **Settings UI** (stored in database). Default: 100 MB, configurable from 1 MB to 2 GB.
+
+### S3 Architecture
+
+Shelf uses an **API Gateway pattern** for secure file access:
+
+- **Downloads/Reading**: Files are streamed through the app server via `/api/books/stream`. The browser never accesses S3 directly, so only the app server needs to reach S3. This works on all devices (mobile, desktop) without network configuration issues.
+
+- **Uploads**: Files are uploaded directly to S3 using presigned URLs. The browser needs to reach `S3_PUBLIC_ENDPOINT` for uploads. For production with DigitalOcean Spaces (which has a public URL), this works automatically. For local development with MinIO, uploads work on desktop but require network configuration for mobile devices.
 
 ### S3 Storage Structure
 
@@ -492,7 +500,7 @@ sudo ufw enable
 | `/api/books/[id]`             | DELETE | Delete a book (+ S3 files)                   |
 | `/api/books/upload-url`       | POST   | Get presigned upload URL                     |
 | `/api/books/cover-upload-url` | POST   | Get presigned cover upload URL               |
-| `/api/books/download-url`     | POST   | Get presigned download URL                   |
+| `/api/books/stream`           | GET    | Stream book/cover from S3 (proxy)            |
 | **Bookmarks**                 |        |                                              |
 | `/api/books/[id]/bookmarks`   | GET    | Get bookmarks for a book                     |
 | `/api/books/[id]/bookmarks`   | POST   | Add a bookmark                               |

@@ -1,5 +1,10 @@
 # Copilot Instructions for Shelf Book Reader
 
+## Important Workflow Rules
+
+- **NEVER commit code without explicit user approval** - Always wait for the user to confirm before running `git commit`. Show the changes and ask for confirmation first.
+- **NEVER push code without explicit user approval** - Same rule applies to `git push`.
+
 ## Project Overview
 
 This is a personal book reader application built with Next.js 16 using the **Pages Router** pattern. The app allows users to upload, manage, and read PDF and EPUB books with features like bookmarks, notes, reading time tracking, favorites, wishlists, collections, custom book covers, and completion celebrations.
@@ -146,7 +151,7 @@ Located in `src/pages/api/`:
 - `DELETE /api/books/:id` - Delete a book (and S3 files)
 - `POST /api/books/upload-url` - Generate presigned upload URL for book file
 - `POST /api/books/cover-upload-url` - Generate presigned upload URL for cover image
-- `POST /api/books/download-url` - Generate presigned download URL
+- `GET /api/books/stream` - Stream book/cover file from S3 (API Gateway pattern)
 
 ### Bookmarks
 
@@ -224,15 +229,26 @@ export default async function handler(
 
 ## S3 Integration
 
-Files are stored in S3-compatible storage (DigitalOcean Spaces):
+Files are stored in S3-compatible storage (DigitalOcean Spaces, MinIO):
+
+**Upload flow:**
 
 1. Client requests presigned upload URL from API
 2. Client uploads directly to S3 using presigned URL
 3. Book metadata (with s3Key) saved to PostgreSQL
-4. For reading, client requests presigned download URL
-5. PDF rendered using temporary signed URL
 
-Note: Use `S3_PUBLIC_ENDPOINT` for browser-accessible presigned URLs (important for Docker setups where internal and external endpoints differ).
+**Download/Reading flow (API Gateway pattern):**
+
+1. Client requests stream URL from `/api/books/stream?s3Key=...`
+2. App server fetches file from S3 internally
+3. App server streams file to browser
+
+This architecture ensures:
+
+- Only the app server is exposed to the internet (via Cloudflare Tunnel)
+- S3/MinIO stays internal and never accessible from outside
+- Works on all devices (mobile, desktop) without network issues
+- Better security: S3 credentials never leave the server
 
 ## Docker
 
@@ -273,7 +289,6 @@ See `.env.example` for all variables. Key ones:
 - `POSTGRES_*` - PostgreSQL configuration (ALL REQUIRED)
 - `S3_*` - S3/Spaces configuration (ALL REQUIRED)
 - `AUTH_*` - Authentication credentials (REQUIRED)
-- `S3_PUBLIC_ENDPOINT` - Browser-accessible S3 URL (for Docker)
 - `CLOUDFLARE_TUNNEL_TOKEN` - For secure tunnel deployment (optional)
 
 ### Application Settings (Database-Stored)

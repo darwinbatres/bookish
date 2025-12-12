@@ -9,8 +9,12 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { config } from "@/lib/config";
 
 // S3 Configuration from centralized config
-// S3_ENDPOINT is the internal endpoint (for server-side operations inside Docker)
-// S3_PUBLIC_ENDPOINT is the public endpoint (for browser access to presigned URLs)
+// - S3_ENDPOINT: Internal endpoint for server-side operations (inside Docker network)
+// - S3_PUBLIC_ENDPOINT: Public endpoint for browser uploads (presigned PUT URLs)
+//
+// Downloads are proxied through /api/books/stream (API Gateway pattern), so only
+// the server needs to reach S3. Uploads still use presigned URLs, so the browser
+// needs to reach S3_PUBLIC_ENDPOINT for upload functionality.
 const s3Config = {
   endpoint: config.s3.endpoint,
   publicEndpoint: config.s3.publicEndpoint,
@@ -86,24 +90,6 @@ export async function generateUploadPresignedUrl(
     Bucket: s3Config.bucket,
     Key: key,
     ContentType: contentType,
-  });
-
-  return getSignedUrl(client, command, { expiresIn });
-}
-
-/**
- * Generate a presigned URL for downloading a file from S3
- * Uses public endpoint so the browser can access it
- */
-export async function generateDownloadPresignedUrl(
-  key: string,
-  expiresIn: number = config.upload.presignedUrlExpiry
-): Promise<string> {
-  const client = getS3PublicClient();
-
-  const command = new GetObjectCommand({
-    Bucket: s3Config.bucket,
-    Key: key,
   });
 
   return getSignedUrl(client, command, { expiresIn });

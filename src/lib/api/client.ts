@@ -243,18 +243,25 @@ export async function getCoverUploadUrl(
 
 export interface DownloadUrlResponse {
   downloadUrl: string;
-  expiresAt: number;
 }
 
+/**
+ * Get a URL for downloading/streaming a book file.
+ *
+ * Uses the proxy endpoint (/api/books/stream) which streams the file
+ * through the app server. This is the industry-standard API Gateway pattern:
+ * - Only the app needs to be exposed to the internet
+ * - S3/MinIO stays internal, never accessible from outside
+ * - Works on all devices (mobile, desktop) without localhost issues
+ * - Better security: S3 credentials never leave the server
+ */
 export async function getDownloadUrl(
   s3Key: string
 ): Promise<DownloadUrlResponse> {
-  const response = await fetch(`${API_BASE}/books/download-url`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ s3Key }),
-  });
-  return handleResponse<DownloadUrlResponse>(response);
+  // Return URL to our streaming proxy endpoint
+  // This streams the file through the app server instead of direct S3 access
+  const downloadUrl = `${API_BASE}/books/stream?s3Key=${encodeURIComponent(s3Key)}`;
+  return { downloadUrl };
 }
 
 // Stats API

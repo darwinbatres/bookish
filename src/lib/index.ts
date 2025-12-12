@@ -13,7 +13,6 @@ export {
   isS3Configured,
   getS3Client,
   generateUploadPresignedUrl,
-  generateDownloadPresignedUrl,
   deleteFromS3,
   fileExistsInS3,
   generateBookS3Key,

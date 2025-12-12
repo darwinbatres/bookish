@@ -61,6 +61,7 @@ const IsolatedPdfViewer = memo(
     const [numPages, setNumPages] = useState<number>(0);
     const [pageNumber, setPageNumber] = useState(initialPage);
     const [zoom, setZoom] = useState(1);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const loadedRef = useRef(false);
     const onPageChangeRef = useRef(onPageChange);
     const onTotalPagesLoadedRef = useRef(onTotalPagesLoaded);
@@ -93,6 +94,7 @@ const IsolatedPdfViewer = memo(
 
     const handleLoadError = useCallback((error: Error) => {
       console.error("[Shelf] PDF load error:", error);
+      setLoadError(error.message || "Failed to load PDF");
     }, []);
 
     // Notify parent of page changes (after initial mount)
@@ -172,10 +174,13 @@ const IsolatedPdfViewer = memo(
             }
             error={
               <div
-                className="flex items-center justify-center h-64 text-destructive text-sm"
+                className="flex flex-col items-center justify-center h-64 text-destructive text-sm"
                 role="alert"
               >
-                Failed to load PDF. Please try again.
+                <p className="font-medium">Failed to load PDF</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {loadError || "Please try again"}
+                </p>
               </div>
             }
           >
