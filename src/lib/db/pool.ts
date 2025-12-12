@@ -59,7 +59,9 @@ export async function closePool(): Promise<void> {
   if (pool) {
     await pool.end();
     pool = null;
-    console.log("[DB] Connection pool closed");
+    if (config.isDev) {
+      console.log("[DB] Connection pool closed");
+    }
   }
 }
 

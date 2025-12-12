@@ -25,8 +25,8 @@ A minimalist, privacy-focused personal book reader. Upload and read PDFs and EPU
 
 - **📊 Stats Dashboard** - Comprehensive library statistics:
   - Total books, favorites, wishlist items, collections
-  - Reading progress: completed books, total reading time, reading sessions
-  - Storage: S3 file usage, PostgreSQL database size, format breakdown
+  - Reading progress: completed books, pages read, total reading time, reading sessions
+  - Storage: S3 file usage, PostgreSQL database size, total storage, format breakdown
   - Recent activity tracking (books, notes, bookmarks, wishlist, collections)
 - **⚙️ Configurable Settings** - Adjust max upload size (1MB - 2GB), cover size limits
 - **🔐 Security Status** - View authentication, rate limiting, and storage configuration

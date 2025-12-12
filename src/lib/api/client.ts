@@ -271,6 +271,9 @@ export interface StorageStats {
   booksWithCovers: number;
   totalStorageBytes: number;
   databaseSizeBytes: number; // PostgreSQL database size
+  // Reading progress stats
+  totalPages: number; // Total pages across all books
+  pagesRead: number; // Sum of current_page across all books
   booksByFormat: { format: string; count: number; bytes: number }[];
   recentActivity: {
     booksAddedLast7Days: number;

@@ -16,6 +16,7 @@ import {
   ImageIcon,
   Database,
   Activity,
+  BookMarked,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageLayout } from "@/components/ui/page-layout";
@@ -182,6 +183,17 @@ export function StatsView() {
             iconColor="text-green-500"
           />
           <StatCard
+            icon={BookMarked}
+            label="Pages Read"
+            value={stats.pagesRead.toLocaleString()}
+            subValue={
+              stats.totalPages > 0
+                ? `${Math.round((stats.pagesRead / stats.totalPages) * 100)}% of ${stats.totalPages.toLocaleString()} total`
+                : undefined
+            }
+            iconColor="text-indigo-500"
+          />
+          <StatCard
             icon={Clock}
             label="Reading Time"
             value={formatReadingTime(stats.totalReadingTime)}
@@ -191,7 +203,15 @@ export function StatsView() {
             label="Bookmarks"
             value={stats.totalBookmarks}
           />
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <StatCard icon={StickyNote} label="Notes" value={stats.totalNotes} />
+          <StatCard
+            icon={Activity}
+            label="Reading Sessions"
+            value={stats.totalReadingSessions}
+            iconColor="text-cyan-500"
+          />
         </div>
       </div>
 
@@ -226,10 +246,13 @@ export function StatsView() {
             iconColor="text-purple-500"
           />
           <StatCard
-            icon={Activity}
-            label="Reading Sessions"
-            value={stats.totalReadingSessions}
-            iconColor="text-cyan-500"
+            icon={HardDrive}
+            label="Total Storage"
+            value={formatBytes(
+              stats.totalStorageBytes + stats.databaseSizeBytes
+            )}
+            subValue="S3 + Database"
+            iconColor="text-emerald-500"
           />
         </div>
       </div>

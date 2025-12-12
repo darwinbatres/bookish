@@ -13,6 +13,9 @@ export interface StorageStats {
   booksWithCovers: number;
   totalStorageBytes: number;
   databaseSizeBytes: number; // PostgreSQL database size
+  // Reading progress stats
+  totalPages: number; // Total pages across all books
+  pagesRead: number; // Sum of current_page across all books
   booksByFormat: { format: string; count: number; bytes: number }[];
   recentActivity: {
     booksAddedLast7Days: number;
@@ -46,6 +49,7 @@ export async function getStorageStats(): Promise<StorageStats> {
     totalSizeResult,
     databaseSizeResult,
     formatStatsResult,
+    pageProgressResult,
     recentBooksResult,
     recentNotesResult,
     recentBookmarksResult,
@@ -112,6 +116,14 @@ export async function getStorageStats(): Promise<StorageStats> {
        ORDER BY count DESC`
     ),
 
+    // Total pages and pages read progress
+    pool.query<{ total_pages: string; pages_read: string }>(
+      `SELECT 
+        COALESCE(SUM(total_pages), 0) as total_pages,
+        COALESCE(SUM(current_page), 0) as pages_read
+       FROM books`
+    ),
+
     // Recent books activity
     pool.query<{ last7: string; last30: string }>(
       `SELECT 
@@ -169,6 +181,8 @@ export async function getStorageStats(): Promise<StorageStats> {
     booksWithCovers: parseInt(booksWithCoversResult.rows[0].count, 10),
     totalStorageBytes: parseInt(totalSizeResult.rows[0].total, 10),
     databaseSizeBytes: parseInt(databaseSizeResult.rows[0].size, 10),
+    totalPages: parseInt(pageProgressResult.rows[0].total_pages, 10),
+    pagesRead: parseInt(pageProgressResult.rows[0].pages_read, 10),
     booksByFormat: formatStatsResult.rows.map((row) => ({
       format: row.format,
       count: parseInt(row.count, 10),
