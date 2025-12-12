@@ -54,9 +54,15 @@ services:
     environment:
       - NODE_ENV=production
       - NEXT_TELEMETRY_DISABLED=1
-      # Override POSTGRES_HOST for Docker networking
+      # Override hosts for Docker networking (containers use service names)
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
+      # S3/MinIO endpoint - use minio service name for Docker networking
+      # When using local-storage profile, app connects to minio:9000 internally
+      - S3_ENDPOINT=http://minio:9000
+      # Use MinIO credentials for S3 when running in Docker with local-storage
+      - S3_ACCESS_KEY_ID=${MINIO_ROOT_USER:-minioadmin}
+      - S3_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
     networks:
       - shelf-network
     healthcheck:

@@ -373,16 +373,29 @@ if (config.s3.isConfigured) {
 
 ## Testing Locally
 
+### Fastest Way (Docker - Recommended)
+
+```bash
+# Copy the example environment (works out of the box!)
+cp .env.example .env
+
+# Start everything with one command
+docker compose --profile local-storage up -d
+
+# Open http://localhost:3000
+# Login: admin / changeme123
+```
+
+### Local Development (pnpm dev)
+
 ```bash
 pnpm install
 cp .env.example .env.local
-# Configure S3 settings in .env.local
 
-# Option 1: Without S3 (limited functionality)
-pnpm dev
-
-# Option 2: With MinIO for local S3
+# Start MinIO for local S3
 docker compose --profile local-storage up -d
+
+# Run Next.js dev server
 pnpm dev
 ```
 
@@ -391,20 +404,22 @@ pnpm dev
 For secure internet deployment on DigitalOcean or similar:
 
 ```bash
-# 1. Configure .env with production values
+# 1. Start with the example file
 cp .env.example .env
-# Edit .env with secure passwords and S3 credentials
 
-# 2. Generate secure secrets
+# 2. Generate secure secrets and update .env
 openssl rand -base64 16  # For AUTH_PASSWORD
 openssl rand -base64 32  # For AUTH_SESSION_SECRET
 openssl rand -base64 24  # For POSTGRES_PASSWORD
 
-# 3. Add Cloudflare Tunnel token
+# 3. Configure S3 (DigitalOcean Spaces or AWS S3)
+# Edit .env: S3_ENDPOINT, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY
+
+# 4. Add Cloudflare Tunnel token
 # Get from: https://one.dash.cloudflare.com → Networks → Tunnels
 echo "CLOUDFLARE_TUNNEL_TOKEN=eyJ..." >> .env
 
-# 4. Deploy with tunnel (no ports exposed!)
+# 5. Deploy with tunnel (no ports exposed!)
 docker compose --profile tunnel up -d
 ```
 

@@ -42,13 +42,31 @@ A minimalist, privacy-focused personal book reader. Upload and read PDFs and EPU
 
 ## 🚀 Quick Start
 
+### Fastest Way (Docker)
+
+```bash
+# Clone and enter the project
+git clone https://github.com/yourusername/shelf-book-reader.git
+cd shelf-book-reader
+
+# Copy the example environment (works out of the box!)
+cp .env.example .env
+
+# Start everything with one command
+docker compose --profile local-storage up -d
+
+# Open http://localhost:3000
+# Login: admin / changeme123
+```
+
+That's it! The app, database, and S3 storage are all running.
+
 ### Prerequisites
 
-- Node.js 20+
-- pnpm (`npm install -g pnpm`)
-- Docker & Docker Compose (for containerized deployment)
+- Docker & Docker Compose (recommended)
+- Or: Node.js 20+ and pnpm for local development
 
-### Development
+### Local Development (without Docker)
 
 ```bash
 # Clone the repository
@@ -95,15 +113,23 @@ docker compose logs -f
 
 #### Local Development (with MinIO)
 
-For local development with S3-compatible storage:
+The easiest way to get started - just copy the example file and run:
 
 ```bash
+# Copy environment file (works out of the box!)
+cp .env.example .env
+
 # Start app + PostgreSQL + MinIO
 docker compose --profile local-storage up -d
+
+# That's it! Open http://localhost:3000
+# Login: admin / changeme123
 
 # MinIO Console: http://localhost:9001
 # Default credentials: minioadmin / minioadmin
 ```
+
+> **Note:** The default passwords in `.env.example` are for development only. Generate secure passwords for production!
 
 #### Production with Cloudflare Tunnel
 
