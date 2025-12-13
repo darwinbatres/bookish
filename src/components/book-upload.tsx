@@ -2,7 +2,7 @@ import type React from "react";
 import { Plus, FileText, AlertCircle, Upload } from "lucide-react";
 import { useCallback, useState, useEffect } from "react";
 import type { BookFormat } from "@/types";
-import { getUploadUrl, createBook, fetchSettings } from "@/lib/api/client";
+import { uploadBook, createBook, fetchSettings } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
@@ -25,17 +25,6 @@ function getFormatFromFilename(filename: string): BookFormat {
   if (ext === "epub") return "epub";
   if (ext === "mobi") return "mobi";
   return "pdf";
-}
-
-function getContentTypeFromFormat(format: BookFormat): string {
-  switch (format) {
-    case "epub":
-      return "application/epub+zip";
-    case "mobi":
-      return "application/x-mobipocket-ebook";
-    default:
-      return "application/pdf";
-  }
 }
 
 interface BookUploadProps {
@@ -115,50 +104,17 @@ export function BookUpload({ onBookAdded }: BookUploadProps) {
 
           try {
             const format = getFormatFromFilename(file.name);
-            const contentType = getContentTypeFromFormat(format);
             const bookId = generateId();
             const title = extractTitleFromFilename(file.name);
 
             updateUpload(i, { progress: 10 });
 
-            // Get presigned upload URL from API
-            const { uploadUrl, s3Key } = await getUploadUrl(
-              bookId,
-              file.name,
-              contentType,
-              file.size
-            );
-
-            updateUpload(i, { progress: 20 });
-
-            // Upload file with progress tracking using XMLHttpRequest
-            await new Promise<void>((resolve, reject) => {
-              const xhr = new XMLHttpRequest();
-
-              xhr.upload.addEventListener("progress", (event) => {
-                if (event.lengthComputable) {
-                  // Map 0-100% of upload to 20-80% of our progress
-                  const uploadPercent = (event.loaded / event.total) * 100;
-                  const mappedProgress = 20 + uploadPercent * 0.6;
-                  updateUpload(i, { progress: Math.round(mappedProgress) });
-                }
-              });
-
-              xhr.addEventListener("load", () => {
-                if (xhr.status >= 200 && xhr.status < 300) {
-                  resolve();
-                } else {
-                  reject(new Error(`Upload failed: ${xhr.statusText}`));
-                }
-              });
-
-              xhr.addEventListener("error", () => {
-                reject(new Error("Network error during upload"));
-              });
-
-              xhr.open("PUT", uploadUrl);
-              xhr.setRequestHeader("Content-Type", contentType);
-              xhr.send(file);
+            // Upload file through our API (proxied upload)
+            // This sends the file to our server, which uploads to S3 internally
+            const { s3Key } = await uploadBook(bookId, file, (percent) => {
+              // Map 0-100% of upload to 10-80% of our progress
+              const mappedProgress = 10 + percent * 0.7;
+              updateUpload(i, { progress: Math.round(mappedProgress) });
             });
 
             updateUpload(i, { progress: 85, status: "processing" });

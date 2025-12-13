@@ -20,11 +20,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  updateBook,
-  getCoverUploadUrl,
-  getDownloadUrl,
-} from "@/lib/api/client";
+import { updateBook, uploadCover, getDownloadUrl } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 import type { DBBook } from "@/types";
 
@@ -183,27 +179,9 @@ export function EditBookModal({
     file: File,
     bookId: string
   ): Promise<string> => {
-    // Get presigned URL
-    const { uploadUrl, s3Key } = await getCoverUploadUrl(
-      bookId,
-      file.name,
-      file.type,
-      file.size
-    );
-
-    // Upload to S3
-    const uploadResponse = await fetch(uploadUrl, {
-      method: "PUT",
-      body: file,
-      headers: {
-        "Content-Type": file.type,
-      },
-    });
-
-    if (!uploadResponse.ok) {
-      throw new Error("Failed to upload cover image");
-    }
-
+    // Upload through our API (proxied upload)
+    // This sends the file to our server, which uploads to S3 internally
+    const { s3Key } = await uploadCover(bookId, file);
     return s3Key;
   };
 

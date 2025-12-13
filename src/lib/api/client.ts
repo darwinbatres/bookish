@@ -226,7 +226,7 @@ export async function getUploadUrl(
   return handleResponse<UploadUrlResponse>(response);
 }
 
-// Cover upload API
+// Cover upload API (legacy presigned URL - kept for backwards compatibility)
 export async function getCoverUploadUrl(
   bookId: string,
   filename: string,
@@ -239,6 +239,83 @@ export async function getCoverUploadUrl(
     body: JSON.stringify({ bookId, filename, contentType, fileSize }),
   });
   return handleResponse<UploadUrlResponse>(response);
+}
+
+// Proxied upload APIs (recommended - browser uploads to our server, server uploads to S3)
+interface ProxiedUploadResponse {
+  s3Key: string;
+}
+
+/**
+ * Upload a book file through the API server (proxied upload).
+ * The browser sends the file to our API, which then uploads to S3 internally.
+ * This avoids exposing S3/MinIO to the internet.
+ */
+export async function uploadBook(
+  bookId: string,
+  file: File,
+  onProgress?: (percent: number) => void
+): Promise<ProxiedUploadResponse> {
+  const formData = new FormData();
+  formData.append("bookId", bookId);
+  formData.append("file", file);
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+
+    xhr.upload.addEventListener("progress", (event) => {
+      if (event.lengthComputable && onProgress) {
+        const percent = (event.loaded / event.total) * 100;
+        onProgress(percent);
+      }
+    });
+
+    xhr.addEventListener("load", () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const response = JSON.parse(xhr.responseText);
+          resolve(response);
+        } catch {
+          reject(new Error("Invalid response from server"));
+        }
+      } else {
+        try {
+          const error = JSON.parse(xhr.responseText);
+          reject(new Error(error.message || "Upload failed"));
+        } catch {
+          reject(new Error(`Upload failed: ${xhr.statusText}`));
+        }
+      }
+    });
+
+    xhr.addEventListener("error", () => {
+      reject(new Error("Network error during upload"));
+    });
+
+    xhr.open("POST", `${API_BASE}/books/upload`);
+    xhr.send(formData);
+  });
+}
+
+/**
+ * Upload a cover image through the API server (proxied upload).
+ * The browser sends the file to our API, which then uploads to S3 internally.
+ * This avoids exposing S3/MinIO to the internet.
+ */
+export async function uploadCover(
+  bookId: string,
+  file: File
+): Promise<ProxiedUploadResponse> {
+  const formData = new FormData();
+  formData.append("bookId", bookId);
+  formData.append("file", file);
+
+  const response = await fetch(`${API_BASE}/books/cover-upload`, {
+    method: "POST",
+    body: formData,
+  });
+
+  return handleResponse<ProxiedUploadResponse>(response);
 }
 
 export interface DownloadUrlResponse {

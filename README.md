@@ -211,11 +211,20 @@ All required environment variables must be set - **no hardcoded defaults for sen
 
 ### S3 Architecture
 
-Bookish uses an **API Gateway pattern** for secure file access:
+Bookish uses an **API Gateway pattern** for secure file access. Both uploads and downloads are proxied through the app server—S3/MinIO is never exposed to the internet:
 
-- **Downloads/Reading**: Files are streamed through the app server via `/api/books/stream`. The browser never accesses S3 directly, so only the app server needs to reach S3. This works on all devices (mobile, desktop) without network configuration issues.
+- **Uploads**: Files are uploaded to the app server via `/api/books/upload` (books) or `/api/books/cover-upload` (covers). The app server then uploads to S3 internally. This ensures the browser only needs to reach your app, not S3.
 
-- **Uploads**: Files are uploaded directly to S3 using presigned URLs. The browser needs to reach `S3_PUBLIC_ENDPOINT` for uploads. For production with DigitalOcean Spaces (which has a public URL), this works automatically. For local development with MinIO, uploads work on desktop but require network configuration for mobile devices.
+- **Downloads/Reading**: Files are streamed through the app server via `/api/books/stream`. The browser never accesses S3 directly.
+
+**Benefits:**
+
+- ✅ Works on all devices (mobile, desktop) without network configuration
+- ✅ S3/MinIO can stay completely internal (no public access required)
+- ✅ Single point of authentication and rate limiting
+- ✅ Cloudflare Tunnel "just works" without exposing additional ports
+
+> **Note:** Legacy presigned URL endpoints (`/api/books/upload-url`, `/api/books/cover-upload-url`) are still available for backwards compatibility but are no longer used by the UI.
 
 ### S3 Storage Structure
 
@@ -524,9 +533,11 @@ sudo ufw enable
 | `/api/books/[id]`             | GET    | Get a book                                   |
 | `/api/books/[id]`             | PATCH  | Update book (title, author, cover, favorite) |
 | `/api/books/[id]`             | DELETE | Delete a book (+ S3 files)                   |
-| `/api/books/upload-url`       | POST   | Get presigned upload URL                     |
-| `/api/books/cover-upload-url` | POST   | Get presigned cover upload URL               |
+| `/api/books/upload`           | POST   | Upload book file (proxied to S3)             |
+| `/api/books/cover-upload`     | POST   | Upload cover image (proxied to S3)           |
 | `/api/books/stream`           | GET    | Stream book/cover from S3 (proxy)            |
+| `/api/books/upload-url`       | POST   | Get presigned upload URL (legacy)            |
+| `/api/books/cover-upload-url` | POST   | Get presigned cover upload URL (legacy)      |
 | **Bookmarks**                 |        |                                              |
 | `/api/books/[id]/bookmarks`   | GET    | Get bookmarks for a book                     |
 | `/api/books/[id]/bookmarks`   | POST   | Add a bookmark                               |

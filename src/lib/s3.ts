@@ -95,6 +95,27 @@ export async function generateUploadPresignedUrl(
 }
 
 /**
+ * Upload a file buffer to S3 directly from the server
+ * Used for proxied uploads where the browser sends the file to our API
+ */
+export async function uploadToS3(
+  key: string,
+  buffer: Buffer,
+  contentType: string
+): Promise<void> {
+  const client = getS3Client();
+
+  const command = new PutObjectCommand({
+    Bucket: s3Config.bucket,
+    Key: key,
+    Body: buffer,
+    ContentType: contentType,
+  });
+
+  await client.send(command);
+}
+
+/**
  * Delete a file from S3
  */
 export async function deleteFromS3(key: string): Promise<void> {

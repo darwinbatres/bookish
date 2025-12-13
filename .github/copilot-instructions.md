@@ -62,13 +62,13 @@ src/
 │   │   └── index.ts         # Barrel export
 │   ├── auth.ts      # JWT session management
 │   ├── config.ts    # Centralized config with Zod validation
-│   ├── s3.ts        # S3 presigned URL operations
+│   ├── s3.ts        # S3 operations (upload, download, presigned URLs)
 │   ├── utils.ts     # General utilities (cn, etc.)
 │   └── index.ts     # Barrel export
 ├── pages/           # Next.js pages (Pages Router)
 │   ├── api/         # API routes
 │   │   ├── auth/    # Authentication endpoints
-│   │   ├── books/   # Book endpoints
+│   │   ├── books/   # Book endpoints (upload, cover-upload, stream, etc.)
 │   │   ├── collections/ # Collection endpoints
 │   │   ├── wishlist/    # Wishlist endpoints
 │   │   ├── settings.ts  # App settings
@@ -149,9 +149,11 @@ Located in `src/pages/api/`:
 - `GET /api/books/:id` - Get a book
 - `PATCH /api/books/:id` - Update a book (title, author, cover, favorite)
 - `DELETE /api/books/:id` - Delete a book (and S3 files)
-- `POST /api/books/upload-url` - Generate presigned upload URL for book file
-- `POST /api/books/cover-upload-url` - Generate presigned upload URL for cover image
+- `POST /api/books/upload` - Upload book file (proxied to S3)
+- `POST /api/books/cover-upload` - Upload cover image (proxied to S3)
 - `GET /api/books/stream` - Stream book/cover file from S3 (API Gateway pattern)
+- `POST /api/books/upload-url` - Generate presigned upload URL (legacy, not used by UI)
+- `POST /api/books/cover-upload-url` - Generate presigned cover upload URL (legacy)
 
 ### Bookmarks
 
@@ -222,22 +224,26 @@ export default async function handler(
 - `ReaderView` - Reading interface (supports PDF and EPUB)
 - `PdfReader` - PDF rendering with react-pdf
 - `EpubReader` - EPUB rendering with epubjs
-- `BookUpload` - File upload with S3 integration
+- `BookUpload` - File upload with proxied S3 integration
 - `NoteModal` - Note-taking modal
 - `ReadingPanel` - Reading controls and information panel
 - `Sidebar` / `MobileNav` - Navigation
 
 ## S3 Integration
 
-Files are stored in S3-compatible storage (DigitalOcean Spaces, MinIO):
+Files are stored in S3-compatible storage (DigitalOcean Spaces, MinIO).
 
-**Upload flow:**
+**Architecture:** Both uploads and downloads use the **API Gateway pattern**—the browser only communicates with the Next.js app, never directly with S3.
 
-1. Client requests presigned upload URL from API
-2. Client uploads directly to S3 using presigned URL
-3. Book metadata (with s3Key) saved to PostgreSQL
+**Upload flow (proxied):**
 
-**Download/Reading flow (API Gateway pattern):**
+1. Client sends file to `/api/books/upload` (or `/api/books/cover-upload` for covers)
+2. App server receives file via multipart form data
+3. App server uploads to S3 internally using `uploadToS3()`
+4. App server returns `s3Key` to client
+5. Client creates book record with s3Key in PostgreSQL
+
+**Download/Reading flow (proxied):**
 
 1. Client requests stream URL from `/api/books/stream?s3Key=...`
 2. App server fetches file from S3 internally
@@ -247,8 +253,11 @@ This architecture ensures:
 
 - Only the app server is exposed to the internet (via Cloudflare Tunnel)
 - S3/MinIO stays internal and never accessible from outside
-- Works on all devices (mobile, desktop) without network issues
+- Works on all devices (mobile, desktop) without network configuration
+- Single point of authentication and rate limiting
 - Better security: S3 credentials never leave the server
+
+> **Note:** Legacy presigned URL endpoints (`upload-url`, `cover-upload-url`) still exist for backwards compatibility but are not used by the UI.
 
 ## Docker
 
@@ -257,6 +266,7 @@ This architecture ensures:
 - Health checks via `/api/health`
 - MinIO available for local S3 testing
 - Cloudflare Tunnel profile for secure production deployment
+- tmpfs mount for file upload temp storage (256MB)
 
 ### Docker Profiles
 

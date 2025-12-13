@@ -86,7 +86,8 @@ services:
       - no-new-privileges:true
     read_only: true
     tmpfs:
-      - /tmp:noexec,nosuid,size=100M
+      # Temp directory for file uploads - sized to match max upload (default 100MB + overhead)
+      - /tmp:nosuid,size=256M
     deploy:
       resources:
         limits:
