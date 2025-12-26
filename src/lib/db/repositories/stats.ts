@@ -17,6 +17,18 @@ export interface StorageStats {
   totalPages: number; // Total pages across all books
   pagesRead: number; // Sum of current_page across all books
   booksByFormat: { format: string; count: number; bytes: number }[];
+  // Audio stats
+  audioStats: {
+    totalTracks: number;
+    totalFavorites: number;
+    totalPlaylists: number;
+    completedTracks: number;
+    totalListeningTime: number; // seconds
+    totalListeningSessions: number;
+    totalAudioBookmarks: number;
+    totalStorageBytes: number;
+    tracksByFormat: { format: string; count: number; bytes: number }[];
+  };
   recentActivity: {
     booksAddedLast7Days: number;
     booksAddedLast30Days: number;
@@ -28,6 +40,8 @@ export interface StorageStats {
     wishlistAddedLast30Days: number;
     collectionsAddedLast7Days: number;
     collectionsAddedLast30Days: number;
+    audioTracksAddedLast7Days: number;
+    audioTracksAddedLast30Days: number;
   };
 }
 
@@ -55,6 +69,17 @@ export async function getStorageStats(): Promise<StorageStats> {
     recentBookmarksResult,
     recentWishlistResult,
     recentCollectionsResult,
+    // Audio queries
+    audioTracksResult,
+    audioFavoritesResult,
+    playlistsResult,
+    completedAudioResult,
+    listeningTimeResult,
+    listeningSessResult,
+    audioBookmarksResult,
+    audioSizeResult,
+    audioFormatResult,
+    recentAudioResult,
   ] = await Promise.all([
     // Total books
     pool.query<{ count: string }>("SELECT COUNT(*) as count FROM books"),
@@ -163,6 +188,60 @@ export async function getStorageStats(): Promise<StorageStats> {
         COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '30 days') as last30
        FROM collections`
     ),
+
+    // Audio: Total tracks
+    pool.query<{ count: string }>("SELECT COUNT(*) as count FROM audio_tracks"),
+
+    // Audio: Total favorites
+    pool.query<{ count: string }>(
+      "SELECT COUNT(*) as count FROM audio_tracks WHERE is_favorite = true"
+    ),
+
+    // Audio: Total playlists
+    pool.query<{ count: string }>("SELECT COUNT(*) as count FROM playlists"),
+
+    // Audio: Completed tracks
+    pool.query<{ count: string }>(
+      "SELECT COUNT(*) as count FROM audio_tracks WHERE completed_at IS NOT NULL"
+    ),
+
+    // Audio: Total listening time
+    pool.query<{ total: string }>(
+      "SELECT COALESCE(SUM(total_listening_time), 0) as total FROM audio_tracks"
+    ),
+
+    // Audio: Total listening sessions
+    pool.query<{ count: string }>(
+      "SELECT COUNT(*) as count FROM listening_sessions"
+    ),
+
+    // Audio: Total bookmarks
+    pool.query<{ count: string }>(
+      "SELECT COUNT(*) as count FROM audio_bookmarks"
+    ),
+
+    // Audio: Total storage size
+    pool.query<{ total: string }>(
+      "SELECT COALESCE(SUM(file_size), 0) as total FROM audio_tracks"
+    ),
+
+    // Audio: Tracks by format
+    pool.query<{ format: string; count: string; bytes: string }>(
+      `SELECT format, 
+              COUNT(*) as count, 
+              COALESCE(SUM(file_size), 0) as bytes 
+       FROM audio_tracks 
+       GROUP BY format 
+       ORDER BY count DESC`
+    ),
+
+    // Recent audio activity
+    pool.query<{ last7: string; last30: string }>(
+      `SELECT 
+        COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days') as last7,
+        COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '30 days') as last30
+       FROM audio_tracks`
+    ),
   ]);
 
   return {
@@ -214,6 +293,38 @@ export async function getStorageStats(): Promise<StorageStats> {
         recentCollectionsResult.rows[0].last30,
         10
       ),
+      audioTracksAddedLast7Days: parseInt(
+        recentAudioResult.rows[0]?.last7 || "0",
+        10
+      ),
+      audioTracksAddedLast30Days: parseInt(
+        recentAudioResult.rows[0]?.last30 || "0",
+        10
+      ),
+    },
+    audioStats: {
+      totalTracks: parseInt(audioTracksResult.rows[0]?.count || "0", 10),
+      totalFavorites: parseInt(audioFavoritesResult.rows[0]?.count || "0", 10),
+      totalPlaylists: parseInt(playlistsResult.rows[0]?.count || "0", 10),
+      completedTracks: parseInt(completedAudioResult.rows[0]?.count || "0", 10),
+      totalListeningTime: parseInt(
+        listeningTimeResult.rows[0]?.total || "0",
+        10
+      ),
+      totalListeningSessions: parseInt(
+        listeningSessResult.rows[0]?.count || "0",
+        10
+      ),
+      totalAudioBookmarks: parseInt(
+        audioBookmarksResult.rows[0]?.count || "0",
+        10
+      ),
+      totalStorageBytes: parseInt(audioSizeResult.rows[0]?.total || "0", 10),
+      tracksByFormat: (audioFormatResult.rows || []).map((row) => ({
+        format: row.format,
+        count: parseInt(row.count, 10),
+        bytes: parseInt(row.bytes, 10),
+      })),
     },
   };
 }

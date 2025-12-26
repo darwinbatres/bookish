@@ -31,13 +31,17 @@ const envSchema = z.object({
     .enum(["disable", "require", "verify-ca", "verify-full"])
     .default("disable"),
 
-  // S3 - ALL REQUIRED
+  // S3 - Required, but falls back to MINIO defaults for local dev
   S3_ENDPOINT: z.string().min(1),
   S3_PUBLIC_ENDPOINT: z.string().optional(),
   S3_REGION: z.string().min(1),
   S3_BUCKET: z.string().min(1),
-  S3_ACCESS_KEY_ID: z.string().min(1),
-  S3_SECRET_ACCESS_KEY: z.string().min(1),
+  // Allow empty for local dev - will use MINIO_ROOT_USER/PASSWORD as fallback
+  S3_ACCESS_KEY_ID: z.string().optional(),
+  S3_SECRET_ACCESS_KEY: z.string().optional(),
+  // MinIO credentials (used as fallback when S3 creds not set)
+  MINIO_ROOT_USER: z.string().default("minioadmin"),
+  MINIO_ROOT_PASSWORD: z.string().default("minioadmin"),
 
   // Upload (maxSizeMB is now stored in database, not env)
   UPLOAD_ALLOWED_TYPES: z
@@ -108,16 +112,17 @@ export const config = {
 
   get s3() {
     const env = getConfig();
+    // Use S3 credentials if set, otherwise fall back to MinIO credentials
+    const accessKeyId = env.S3_ACCESS_KEY_ID || env.MINIO_ROOT_USER;
+    const secretAccessKey = env.S3_SECRET_ACCESS_KEY || env.MINIO_ROOT_PASSWORD;
     return {
       endpoint: env.S3_ENDPOINT,
       publicEndpoint: env.S3_PUBLIC_ENDPOINT || env.S3_ENDPOINT,
       region: env.S3_REGION,
       bucket: env.S3_BUCKET,
-      accessKeyId: env.S3_ACCESS_KEY_ID,
-      secretAccessKey: env.S3_SECRET_ACCESS_KEY,
-      isConfigured: Boolean(
-        env.S3_ENDPOINT && env.S3_ACCESS_KEY_ID && env.S3_SECRET_ACCESS_KEY
-      ),
+      accessKeyId,
+      secretAccessKey,
+      isConfigured: Boolean(env.S3_ENDPOINT && accessKeyId && secretAccessKey),
     };
   },
 

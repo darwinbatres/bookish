@@ -7,7 +7,7 @@
 
 ## Project Overview
 
-This is a personal book reader application built with Next.js 16 using the **Pages Router** pattern. The app allows users to upload, manage, and read PDF and EPUB books with features like bookmarks, notes, reading time tracking, favorites, wishlists, collections, custom book covers, and completion celebrations.
+This is a personal book and audio reader application built with Next.js 16 using the **Pages Router** pattern. The app allows users to upload, manage, and read PDF and EPUB books, as well as listen to audiobooks and podcasts, with features like bookmarks, notes, reading/listening time tracking, favorites, wishlists, collections, custom covers, and completion celebrations.
 
 ## Tech Stack
 
@@ -35,7 +35,10 @@ src/
 ├── hooks/           # Custom React hooks
 │   ├── use-confetti.ts      # Completion celebration hook
 │   ├── use-reading-tracker.ts # Reading session tracking hook
-│   └── use-cover-url.ts     # Cover image URL resolution hook
+│   ├── use-cover-url.ts     # Cover image URL resolution hook
+│   ├── use-audio-player.ts  # HTML5 audio player controls
+│   ├── use-listening-tracker.ts # Audio session tracking
+│   └── use-media-session.ts # OS media controls (lock screen, media keys)
 ├── lib/             # Utilities
 │   ├── api/         # Client-side API functions + middleware
 │   │   ├── client.ts        # Fetch functions for all API endpoints
@@ -58,6 +61,11 @@ src/
 │   │   │   ├── collections.ts
 │   │   │   ├── wishlist.ts  # Wishlist items
 │   │   │   ├── settings.ts  # App settings
+│   │   │   ├── audio-tracks.ts    # Audio track CRUD
+│   │   │   ├── playlists.ts       # Playlist management
+│   │   │   ├── playlist-items.ts  # Playlist track ordering
+│   │   │   ├── audio-bookmarks.ts # Timestamp bookmarks
+│   │   │   └── listening-sessions.ts # Audio session tracking
 │   │   │   └── stats.ts
 │   │   └── index.ts         # Barrel export
 │   ├── auth.ts      # JWT session management
@@ -69,6 +77,8 @@ src/
 │   ├── api/         # API routes
 │   │   ├── auth/    # Authentication endpoints
 │   │   ├── books/   # Book endpoints (upload, cover-upload, stream, etc.)
+│   │   ├── audio/   # Audio endpoints (upload, stream, download, etc.)
+│   │   ├── playlists/ # Playlist endpoints
 │   │   ├── collections/ # Collection endpoints
 │   │   ├── wishlist/    # Wishlist endpoints
 │   │   ├── settings.ts  # App settings
@@ -81,6 +91,7 @@ src/
 ├── styles/          # Global CSS
 └── types/           # TypeScript type definitions
     ├── book.ts      # Book types (DBBook, DBBookmark, DBNote, DBCollection, DBWishlistItem, etc.)
+    ├── audio.ts     # Audio types (DBAudioTrack, DBPlaylist, etc.)
     └── index.ts     # Barrel export
 ```
 
@@ -190,6 +201,37 @@ Located in `src/pages/api/`:
 - `PATCH /api/wishlist/:id` - Update a wishlist item
 - `DELETE /api/wishlist/:id` - Remove from wishlist
 
+### Audio Tracks
+
+- `GET /api/audio` - List audio tracks (supports pagination, search, sorting)
+- `POST /api/audio` - Create audio track record
+- `POST /api/audio/upload` - Upload audio file (proxied to S3)
+- `POST /api/audio/cover-upload` - Upload audio cover image (proxied to S3)
+- `GET /api/audio/stream` - Stream audio with Range support (seeking)
+- `GET /api/audio/download` - Download audio file with proper filename
+- `GET /api/audio/metadata` - Get unique albums/artists for autocomplete
+- `GET /api/audio/:id` - Get a single audio track
+- `PATCH /api/audio/:id` - Update track (title, artist, album, position, duration, coverUrl, favorite)
+- `DELETE /api/audio/:id` - Delete track (and S3 file)
+- `GET /api/audio/:id/bookmarks` - Get timestamp bookmarks
+- `POST /api/audio/:id/bookmarks` - Add timestamp bookmark
+- `DELETE /api/audio/:id/bookmarks` - Remove bookmark
+- `GET /api/audio/:id/sessions` - Get active listening session
+- `POST /api/audio/:id/sessions` - Start listening session
+- `PATCH /api/audio/:id/sessions` - End listening session
+
+### Playlists
+
+- `GET /api/playlists` - List all playlists
+- `POST /api/playlists` - Create a playlist
+- `GET /api/playlists/:id` - Get a playlist
+- `PATCH /api/playlists/:id` - Update a playlist
+- `DELETE /api/playlists/:id` - Delete a playlist
+- `GET /api/playlists/:id/items` - Get playlist items (tracks)
+- `POST /api/playlists/:id/items` - Add track to playlist
+- `DELETE /api/playlists/:id/items` - Remove track from playlist
+- `PATCH /api/playlists/:id/items` - Reorder playlist items
+
 ### API Pattern
 
 ```typescript
@@ -228,6 +270,11 @@ export default async function handler(
 - `NoteModal` - Note-taking modal
 - `ReadingPanel` - Reading controls and information panel
 - `Sidebar` / `MobileNav` - Navigation
+- `AudioLibraryView` - Audio track management grid
+- `AudioTrackCard` - Individual track display card
+- `AudioUpload` - Audio file upload component
+- `AudioEditModal` - Modal for editing audio track details
+- `MiniPlayer` - Persistent bottom audio player bar
 
 ## S3 Integration
 

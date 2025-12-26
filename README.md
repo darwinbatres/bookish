@@ -1,6 +1,6 @@
 # 📚 Bookish - Personal Book Reader
 
-A minimalist, privacy-focused personal book reader. Upload and read PDFs and EPUBs with bookmarks, notes, reading time tracking, favorites, wishlists, collections, and custom book covers—all stored securely with PostgreSQL and S3-compatible storage.
+A minimalist, privacy-focused personal book and audio reader. Upload and read PDFs and EPUBs, listen to audiobooks and podcasts, with bookmarks, notes, reading/listening time tracking, favorites, wishlists, collections, and custom covers—all stored securely with PostgreSQL and S3-compatible storage.
 
 ## ✨ Features
 
@@ -12,9 +12,17 @@ A minimalist, privacy-focused personal book reader. Upload and read PDFs and EPU
 - **⏱️ Reading Time** - Automatic tracking of time spent reading each book
 - **🎉 Completion Celebration** - Confetti animation when you finish a book!
 
+### 🎧 Audio Experience
+
+- **Audio Player** - Listen to audiobooks, podcasts, and audio files (MP3, M4A, WAV, OGG, FLAC)
+- **Progress Tracking** - Automatic position saving so you never lose your place
+- **Mini Player** - Persistent bottom bar with playback controls
+- **Media Controls** - Lock screen and media key support on mobile and desktop
+- **🎉 Completion Celebration** - Confetti animation when you finish listening!
+
 ### 📚 Library Management
 
-- **⭐ Favorites** - Mark your favorite books for quick access
+- **⭐ Favorites** - Mark your favorite books and audio for quick access
 - **📋 Wishlist** - Track books you want to read (with priority levels)
 - **📁 Collections** - Organize books into custom groups
 - **🖼️ Book Covers** - Upload custom cover images (JPEG, PNG, WebP, GIF)
@@ -24,11 +32,12 @@ A minimalist, privacy-focused personal book reader. Upload and read PDFs and EPU
 ### 📊 Analytics & Settings
 
 - **📊 Stats Dashboard** - Comprehensive library statistics:
-  - Total books, favorites, wishlist items, collections
+  - Total books, audio tracks, favorites, wishlist items, collections
   - Reading progress: completed books, pages read, total reading time, reading sessions
+  - Listening progress: completed audio, total listening time, listening sessions
   - Storage: S3 file usage, PostgreSQL database size, total storage, format breakdown
-  - Recent activity tracking (books, notes, bookmarks, wishlist, collections)
-- **⚙️ Configurable Settings** - Adjust max upload size (1MB - 2GB), cover size limits
+  - Recent activity tracking (books, audio, notes, bookmarks, wishlist, collections)
+- **⚙️ Configurable Settings** - Adjust max upload sizes for books (1MB - 2GB), audio (100MB - 2GB), and covers
 - **🔐 Security Status** - View authentication, rate limiting, and storage configuration
 
 ### 🔐 Security & Infrastructure
@@ -385,26 +394,37 @@ bookish/
 │   │   ├── book-cover.tsx      # Cover image component
 │   │   ├── edit-book-modal.tsx # Edit book with cover upload
 │   │   ├── wishlist-view.tsx   # Wishlist management
+│   │   ├── audio-library-view.tsx  # Audio track library
+│   │   ├── audio-track-card.tsx    # Audio track display
+│   │   ├── audio-upload.tsx        # Audio file upload
+│   │   ├── audio-edit-modal.tsx    # Edit audio track details
+│   │   ├── mini-player.tsx         # Persistent audio player bar
 │   │   └── *.tsx        # Other feature components
 │   ├── hooks/           # Custom React hooks
 │   │   ├── use-confetti.ts        # Completion celebration
 │   │   ├── use-reading-tracker.ts # Reading session tracking
-│   │   └── use-cover-url.ts       # Cover URL resolution
+│   │   ├── use-cover-url.ts       # Cover URL resolution
+│   │   ├── use-audio-player.ts    # HTML5 audio player controls
+│   │   ├── use-listening-tracker.ts # Audio session tracking
+│   │   └── use-media-session.ts   # OS media controls (lock screen, media keys)
+│   │   └── use-media-session.ts   # OS media controls (lock screen, media keys)
 │   ├── lib/             # Utility functions
 │   │   ├── api/         # API client + middleware
 │   │   ├── db/          # PostgreSQL layer
 │   │   │   ├── pool.ts      # Connection pool singleton
 │   │   │   ├── schema.sql   # Database schema
 │   │   │   ├── migrations/  # Incremental migrations
-│   │   │   └── repositories/ # CRUD operations
+│   │   │   └── repositories/ # CRUD operations (books, audio, playlists, etc.)
 │   │   ├── auth.ts      # JWT session management
 │   │   ├── config.ts    # Centralized configuration
-│   │   ├── s3.ts        # S3 operations (books + covers)
+│   │   ├── s3.ts        # S3 operations (books, covers, audio)
 │   │   └── utils.ts     # General utilities
 │   ├── pages/           # Next.js pages (Pages Router)
 │   │   ├── api/         # API routes
 │   │   │   ├── auth/    # Authentication endpoints
 │   │   │   ├── books/   # Book endpoints + cover upload
+│   │   │   ├── audio/   # Audio endpoints (upload, stream, download)
+│   │   │   ├── playlists/ # Playlist endpoints
 │   │   │   ├── collections/ # Collection endpoints
 │   │   │   ├── wishlist/    # Wishlist endpoints
 │   │   │   ├── settings.ts
@@ -563,6 +583,34 @@ sudo ufw enable
 | `/api/wishlist/[id]`          | GET    | Get wishlist item                            |
 | `/api/wishlist/[id]`          | PATCH  | Update wishlist item                         |
 | `/api/wishlist/[id]`          | DELETE | Remove from wishlist                         |
+| **Audio Tracks**              |        |                                              |
+| `/api/audio`                  | GET    | List audio tracks (paginated, filterable)    |
+| `/api/audio`                  | POST   | Create audio track record                    |
+| `/api/audio/[id]`             | GET    | Get an audio track                           |
+| `/api/audio/[id]`             | PATCH  | Update track (title, artist, album, etc.)    |
+| `/api/audio/[id]`             | DELETE | Delete a track (+ S3 file)                   |
+| `/api/audio/upload`           | POST   | Upload audio file (proxied to S3)            |
+| `/api/audio/stream`           | GET    | Stream audio with Range support (seeking)    |
+| `/api/audio/download`         | GET    | Download audio with proper filename          |
+| `/api/audio/metadata`         | GET    | Get unique albums/artists for autocomplete   |
+| **Audio Bookmarks**           |        |                                              |
+| `/api/audio/[id]/bookmarks`   | GET    | Get timestamp bookmarks for a track          |
+| `/api/audio/[id]/bookmarks`   | POST   | Add a timestamp bookmark                     |
+| `/api/audio/[id]/bookmarks`   | DELETE | Remove a bookmark                            |
+| **Listening Sessions**        |        |                                              |
+| `/api/audio/[id]/sessions`    | GET    | Get active listening session                 |
+| `/api/audio/[id]/sessions`    | POST   | Start listening session                      |
+| `/api/audio/[id]/sessions`    | PATCH  | End listening session                        |
+| **Playlists**                 |        |                                              |
+| `/api/playlists`              | GET    | List all playlists                           |
+| `/api/playlists`              | POST   | Create a playlist                            |
+| `/api/playlists/[id]`         | GET    | Get a playlist                               |
+| `/api/playlists/[id]`         | PATCH  | Update a playlist                            |
+| `/api/playlists/[id]`         | DELETE | Delete a playlist                            |
+| `/api/playlists/[id]/items`   | GET    | Get playlist tracks                          |
+| `/api/playlists/[id]/items`   | POST   | Add track to playlist                        |
+| `/api/playlists/[id]/items`   | DELETE | Remove track from playlist                   |
+| `/api/playlists/[id]/items`   | PATCH  | Reorder playlist tracks                      |
 
 ## 🧪 Development
 

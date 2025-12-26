@@ -142,3 +142,16 @@ export async function setCoverMaxSizeMB(sizeMB: number): Promise<void> {
     "Maximum cover image size in megabytes"
   );
 }
+
+export async function getAudioMaxSizeMB(): Promise<number> {
+  const value = await getSetting<number>("audio.maxSizeMB");
+  return value ?? 500; // Default to 500MB for audio files
+}
+
+export async function setAudioMaxSizeMB(sizeMB: number): Promise<void> {
+  await setSetting(
+    "audio.maxSizeMB",
+    sizeMB,
+    "Maximum audio file size in megabytes"
+  );
+}

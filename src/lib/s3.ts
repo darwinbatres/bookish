@@ -3,6 +3,7 @@ import {
   PutObjectCommand,
   DeleteObjectCommand,
   HeadObjectCommand,
+  GetObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { config } from "@/lib/config";
@@ -207,6 +208,83 @@ export function isValidCoverContentType(contentType: string): boolean {
 export const MAX_COVER_SIZE_BYTES = 5 * 1024 * 1024;
 
 // Note: Max file size is now stored in database. Use getUploadMaxSizeMB() from @/lib/db
+
+/**
+ * Generate a unique S3 key for an audio file
+ */
+export function generateAudioS3Key(trackId: string, filename: string): string {
+  const ext = filename.split(".").pop()?.toLowerCase() || "mp3";
+  const timestamp = Date.now();
+  return `audio/${trackId}/${timestamp}.${ext}`;
+}
+
+/**
+ * Generate a unique S3 key for an audio cover image
+ */
+export function generateAudioCoverS3Key(
+  trackId: string,
+  filename: string
+): string {
+  const ext = filename.split(".").pop()?.toLowerCase() || "jpg";
+  const timestamp = Date.now();
+  return `audio-covers/${trackId}/${timestamp}.${ext}`;
+}
+
+/**
+ * Get allowed content types for audio uploads
+ */
+export function getAllowedAudioContentTypes(): string[] {
+  return [
+    "audio/mpeg", // mp3
+    "audio/mp3", // mp3 (alternate)
+    "audio/wav", // wav
+    "audio/wave", // wav (alternate)
+    "audio/x-wav", // wav (alternate)
+    "audio/ogg", // ogg
+    "audio/mp4", // m4a
+    "audio/x-m4a", // m4a (alternate)
+    "audio/m4a", // m4a (alternate)
+    "audio/flac", // flac
+    "audio/x-flac", // flac (alternate)
+    "audio/aac", // aac
+    "audio/webm", // webm
+  ];
+}
+
+/**
+ * Validate content type for audio uploads
+ */
+export function isValidAudioContentType(contentType: string): boolean {
+  return getAllowedAudioContentTypes().includes(contentType.toLowerCase());
+}
+
+/**
+ * Get audio format from content type
+ */
+export function getAudioFormatFromContentType(contentType: string): string {
+  const ct = contentType.toLowerCase();
+  if (ct.includes("mpeg") || ct.includes("mp3")) return "mp3";
+  if (ct.includes("wav") || ct.includes("wave")) return "wav";
+  if (ct.includes("ogg")) return "ogg";
+  if (ct.includes("m4a") || ct === "audio/mp4") return "m4a";
+  if (ct.includes("flac")) return "flac";
+  if (ct.includes("aac")) return "aac";
+  if (ct.includes("webm")) return "webm";
+  return "mp3"; // default
+}
+
+/**
+ * Stream a file from S3 - returns the raw GetObjectCommandOutput
+ * Used for downloading/streaming files through the API gateway pattern
+ */
+export async function streamFromS3(key: string) {
+  const client = getS3Client();
+  const command = new GetObjectCommand({
+    Bucket: s3Config.bucket,
+    Key: key,
+  });
+  return client.send(command);
+}
 
 /**
  * Health check - test S3 connectivity

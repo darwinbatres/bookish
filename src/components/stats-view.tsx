@@ -17,6 +17,9 @@ import {
   Database,
   Activity,
   BookMarked,
+  Music,
+  ListMusic,
+  Headphones,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageLayout } from "@/components/ui/page-layout";
@@ -215,6 +218,70 @@ export function StatsView() {
         </div>
       </div>
 
+      {/* Audio Library */}
+      {stats.audioStats && (
+        <div className="space-y-4">
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+            Audio Library
+          </h3>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <StatCard
+              icon={Music}
+              label="Audio Tracks"
+              value={stats.audioStats.totalTracks}
+              iconColor="text-violet-500"
+            />
+            <StatCard
+              icon={Star}
+              label="Favorites"
+              value={stats.audioStats.totalFavorites}
+              iconColor="text-amber-500"
+            />
+            <StatCard
+              icon={ListMusic}
+              label="Playlists"
+              value={stats.audioStats.totalPlaylists}
+              iconColor="text-pink-500"
+            />
+            <StatCard
+              icon={CheckCircle2}
+              label="Completed"
+              value={stats.audioStats.completedTracks}
+              subValue={
+                stats.audioStats.totalTracks > 0
+                  ? `${Math.round((stats.audioStats.completedTracks / stats.audioStats.totalTracks) * 100)}% of tracks`
+                  : undefined
+              }
+              iconColor="text-green-500"
+            />
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <StatCard
+              icon={Headphones}
+              label="Listening Time"
+              value={formatReadingTime(stats.audioStats.totalListeningTime)}
+              iconColor="text-cyan-500"
+            />
+            <StatCard
+              icon={Activity}
+              label="Sessions"
+              value={stats.audioStats.totalListeningSessions}
+            />
+            <StatCard
+              icon={Bookmark}
+              label="Bookmarks"
+              value={stats.audioStats.totalAudioBookmarks}
+            />
+            <StatCard
+              icon={HardDrive}
+              label="Audio Storage"
+              value={formatBytes(stats.audioStats.totalStorageBytes)}
+              iconColor="text-violet-500"
+            />
+          </div>
+        </div>
+      )}
+
       {/* Storage */}
       <div className="space-y-4">
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
@@ -223,9 +290,16 @@ export function StatsView() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <StatCard
             icon={HardDrive}
-            label="S3 Files"
+            label="Book Files"
             value={formatBytes(stats.totalStorageBytes)}
             subValue="Books & covers"
+          />
+          <StatCard
+            icon={Music}
+            label="Audio Files"
+            value={formatBytes(stats.audioStats?.totalStorageBytes || 0)}
+            subValue="Audio tracks"
+            iconColor="text-violet-500"
           />
           <StatCard
             icon={Database}
@@ -235,23 +309,14 @@ export function StatsView() {
             iconColor="text-blue-500"
           />
           <StatCard
-            icon={ImageIcon}
-            label="With Covers"
-            value={stats.booksWithCovers}
-            subValue={
-              stats.totalBooks > 0
-                ? `${Math.round((stats.booksWithCovers / stats.totalBooks) * 100)}% of library`
-                : undefined
-            }
-            iconColor="text-purple-500"
-          />
-          <StatCard
             icon={HardDrive}
             label="Total Storage"
             value={formatBytes(
-              stats.totalStorageBytes + stats.databaseSizeBytes
+              stats.totalStorageBytes +
+                stats.databaseSizeBytes +
+                (stats.audioStats?.totalStorageBytes || 0)
             )}
-            subValue="S3 + Database"
+            subValue="All files + DB"
             iconColor="text-emerald-500"
           />
         </div>
@@ -387,6 +452,26 @@ export function StatsView() {
                 <span className="text-muted-foreground">Last 30 days</span>
                 <span className="font-semibold">
                   {stats.recentActivity.collectionsAddedLast30Days}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="p-4 rounded-lg bg-card border border-border">
+            <div className="flex items-center gap-2 mb-3">
+              <Music className="w-4 h-4 text-violet-500" />
+              <span className="text-sm font-medium">Audio Added</span>
+            </div>
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Last 7 days</span>
+                <span className="font-semibold">
+                  {stats.recentActivity.audioTracksAddedLast7Days || 0}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Last 30 days</span>
+                <span className="font-semibold">
+                  {stats.recentActivity.audioTracksAddedLast30Days || 0}
                 </span>
               </div>
             </div>

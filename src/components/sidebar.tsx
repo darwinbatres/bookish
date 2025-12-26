@@ -5,6 +5,7 @@ import {
   LogOut,
   ShoppingCart,
   Star,
+  Music,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ import type { DBCollection } from "@/types";
 export type ViewType =
   | "library"
   | "favorites"
+  | "audio"
   | "wishlist"
   | "stats"
   | "settings";
@@ -32,6 +34,7 @@ interface SidebarProps {
 const navItems: Array<{ id: ViewType; label: string; icon: typeof Library }> = [
   { id: "library", label: "Library", icon: Library },
   { id: "favorites", label: "Favorites", icon: Star },
+  { id: "audio", label: "Audio", icon: Music },
   { id: "wishlist", label: "Wishlist", icon: ShoppingCart },
   { id: "stats", label: "Stats", icon: BarChart3 },
   { id: "settings", label: "Settings", icon: Settings },

@@ -7,6 +7,7 @@ import {
   Star,
   ShoppingCart,
   LogOut,
+  Music,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
@@ -120,6 +121,21 @@ export function MobileNav({
               >
                 <Star className="w-5 h-5" />
                 Favorites
+              </button>
+              <button
+                onClick={() => {
+                  onViewChange("audio");
+                  setIsOpen(false);
+                }}
+                className={cn(
+                  "w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-medium transition-colors",
+                  activeView === "audio"
+                    ? "bg-secondary text-secondary-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-secondary/60 active:bg-secondary"
+                )}
+              >
+                <Music className="w-5 h-5" />
+                Audio
               </button>
               <button
                 onClick={() => {

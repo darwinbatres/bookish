@@ -66,10 +66,13 @@ async function handler(
     const { s3Key } = result.data;
 
     // Security: Validate s3Key format to prevent directory traversal
-    // Allow both books/* and covers/* paths
+    // Allow books/*, covers/*, audio/*, and audio-covers/* paths
     const isValidPath =
       !s3Key.includes("..") &&
-      (s3Key.startsWith("books/") || s3Key.startsWith("covers/"));
+      (s3Key.startsWith("books/") ||
+        s3Key.startsWith("covers/") ||
+        s3Key.startsWith("audio/") ||
+        s3Key.startsWith("audio-covers/"));
 
     if (!isValidPath) {
       return res.status(400).json({

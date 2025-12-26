@@ -6,6 +6,8 @@ import {
   setUploadMaxSizeMB,
   getCoverMaxSizeMB,
   setCoverMaxSizeMB,
+  getAudioMaxSizeMB,
+  setAudioMaxSizeMB,
 } from "@/lib/db";
 
 export interface PublicSettings {
@@ -23,6 +25,10 @@ export interface PublicSettings {
     presignedUrlExpiry: number;
   };
   cover: {
+    maxSizeMB: number;
+    allowedTypes: string[];
+  };
+  audio: {
     maxSizeMB: number;
     allowedTypes: string[];
   };
@@ -47,6 +53,9 @@ interface UpdateSettingsRequest {
   cover?: {
     maxSizeMB?: number;
   };
+  audio?: {
+    maxSizeMB?: number;
+  };
 }
 
 async function handler(
@@ -59,9 +68,10 @@ async function handler(
   if (req.method === "GET") {
     try {
       // Get max sizes from database (with defaults)
-      const [maxSizeMB, coverMaxSizeMB] = await Promise.all([
+      const [maxSizeMB, coverMaxSizeMB, audioMaxSizeMB] = await Promise.all([
         getUploadMaxSizeMB(),
         getCoverMaxSizeMB(),
+        getAudioMaxSizeMB(),
       ]);
 
       const settings: PublicSettings = {
@@ -81,6 +91,18 @@ async function handler(
         cover: {
           maxSizeMB: coverMaxSizeMB,
           allowedTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
+        },
+        audio: {
+          maxSizeMB: audioMaxSizeMB,
+          allowedTypes: [
+            "audio/mpeg",
+            "audio/mp4",
+            "audio/wav",
+            "audio/ogg",
+            "audio/flac",
+            "audio/aac",
+            "audio/webm",
+          ],
         },
         storage: {
           type: config.s3.isConfigured ? "s3" : "local",
@@ -142,6 +164,24 @@ async function handler(
         }
 
         await setCoverMaxSizeMB(Math.floor(coverMaxSizeMB));
+      }
+
+      // Validate and update max audio size
+      if (body.audio?.maxSizeMB !== undefined) {
+        const audioMaxSizeMB = body.audio.maxSizeMB;
+
+        // Validate: must be a positive number, max 2GB for audio
+        if (
+          typeof audioMaxSizeMB !== "number" ||
+          audioMaxSizeMB < 1 ||
+          audioMaxSizeMB > 2048
+        ) {
+          return res.status(400).json({
+            error: "audio.maxSizeMB must be between 1 and 2048 MB",
+          });
+        }
+
+        await setAudioMaxSizeMB(Math.floor(audioMaxSizeMB));
       }
 
       return res.status(200).json({ success: true });

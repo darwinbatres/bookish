@@ -8,6 +8,7 @@ import {
   Info,
   Shield,
   Gauge,
+  Music,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -32,6 +33,7 @@ const PAGE_SIZE_KEY = "bookish-library-page-size";
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 const MAX_FILE_SIZE_OPTIONS = [25, 50, 100, 200, 500, 1024, 2048];
 const MAX_COVER_SIZE_OPTIONS = [1, 2, 5, 10, 20, 50];
+const MAX_AUDIO_SIZE_OPTIONS = [100, 200, 500, 1024, 2048];
 const VIEW_MODE_OPTIONS: { value: LibraryViewMode; label: string }[] = [
   { value: "list", label: "List View" },
   { value: "grid", label: "Grid View" },
@@ -136,6 +138,32 @@ export function SettingsView() {
       });
     } catch (error) {
       console.error("[Settings] Failed to update max cover size:", error);
+      toast.error("Failed to update setting");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleMaxAudioSizeChange = async (size: string) => {
+    const newSize = parseInt(size, 10);
+    setIsSaving(true);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ audio: { maxSizeMB: newSize } }),
+      });
+      if (!res.ok) throw new Error("Failed to update setting");
+
+      // Update local state
+      setSettings((prev) =>
+        prev ? { ...prev, audio: { ...prev.audio, maxSizeMB: newSize } } : prev
+      );
+      toast.success("Max audio file size updated", {
+        description: `Audio files up to ${newSize >= 1024 ? `${newSize / 1024} GB` : `${newSize} MB`} can now be uploaded.`,
+      });
+    } catch (error) {
+      console.error("[Settings] Failed to update max audio size:", error);
       toast.error("Failed to update setting");
     } finally {
       setIsSaving(false);
@@ -324,6 +352,61 @@ export function SettingsView() {
               <Badge variant="secondary">
                 {settings && formatDuration(settings.upload.presignedUrlExpiry)}
               </Badge>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Audio Settings */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Music className="w-4 h-4" />
+              Audio Settings
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="max-audio-size">Max Audio File Size</Label>
+              <Select
+                value={String(settings?.audio?.maxSizeMB || 500)}
+                onValueChange={handleMaxAudioSizeChange}
+                disabled={isSaving}
+              >
+                <SelectTrigger id="max-audio-size" className="w-full">
+                  {isSaving ? (
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Saving...</span>
+                    </div>
+                  ) : (
+                    <SelectValue />
+                  )}
+                </SelectTrigger>
+                <SelectContent>
+                  {MAX_AUDIO_SIZE_OPTIONS.map((size) => (
+                    <SelectItem key={size} value={String(size)}>
+                      {size >= 1024 ? `${size / 1024} GB` : `${size} MB`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Maximum allowed size for audio file uploads (MP3, M4A, WAV,
+                etc.)
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">
+                Allowed Formats
+              </span>
+              <div className="flex flex-wrap gap-1 justify-end">
+                {["MP3", "M4A", "WAV", "OGG", "FLAC"].map((type) => (
+                  <Badge key={type} variant="outline">
+                    {type}
+                  </Badge>
+                ))}
+              </div>
             </div>
           </CardContent>
         </Card>

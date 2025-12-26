@@ -238,8 +238,8 @@ export function LibraryView({
         </div>
       </div>
 
-      {/* Sticky Pagination Footer */}
-      {pagination && pagination.totalPages > 1 && (
+      {/* Sticky Pagination Footer - always show so users can change page size */}
+      {pagination && (
         <div className="shrink-0 border-t border-border bg-popover/80 backdrop-blur-sm px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-3 safe-area-inset-bottom">
           <div className="max-w-6xl mx-auto">
             <PaginationControls
