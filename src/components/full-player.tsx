@@ -99,7 +99,11 @@ export function FullPlayer({
         case " ":
         case "k":
           e.preventDefault();
-          isPlaying ? onPause() : onPlay();
+          if (isPlaying) {
+            onPause();
+          } else {
+            onPlay();
+          }
           break;
         case "ArrowLeft":
           e.preventDefault();

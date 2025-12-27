@@ -371,6 +371,25 @@ export interface StorageStats {
     totalStorageBytes: number;
     tracksByFormat: { format: string; count: number; bytes: number }[];
   };
+  // Video stats
+  videoStats?: {
+    totalTracks: number;
+    totalFavorites: number;
+    completedTracks: number;
+    totalWatchTime: number;
+    totalWatchingSessions: number;
+    totalVideoBookmarks: number;
+    totalStorageBytes: number;
+    tracksByFormat: { format: string; count: number; bytes: number }[];
+  };
+  // Media folders stats
+  mediaFoldersStats?: {
+    totalFolders: number;
+    totalItems: number;
+    bookItems: number;
+    audioItems: number;
+    videoItems: number;
+  };
   recentActivity: {
     booksAddedLast7Days: number;
     booksAddedLast30Days: number;
@@ -384,6 +403,10 @@ export interface StorageStats {
     collectionsAddedLast30Days: number;
     audioTracksAddedLast7Days: number;
     audioTracksAddedLast30Days: number;
+    videosAddedLast7Days?: number;
+    videosAddedLast30Days?: number;
+    foldersAddedLast7Days?: number;
+    foldersAddedLast30Days?: number;
   };
 }
 
@@ -1047,4 +1070,424 @@ export async function reorderPlaylistItems(
     body: JSON.stringify({ order }),
   });
   return handleResponse<DBPlaylistItem[]>(response);
+}
+
+// ============================================================================
+// Video API (December 2024)
+// ============================================================================
+
+import type {
+  DBVideoTrack,
+  DBVideoBookmark,
+  DBVideoSession,
+  VideoFormat,
+} from "@/types";
+
+export interface FetchVideosPaginatedParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  sortBy?: "title" | "updatedAt" | "createdAt";
+  sortOrder?: "asc" | "desc";
+  folderId?: string;
+  favoritesOnly?: boolean;
+}
+
+export async function fetchVideosPaginated(
+  params: FetchVideosPaginatedParams = {}
+): Promise<PaginatedResponse<DBVideoTrack>> {
+  const searchParams = new URLSearchParams({
+    paginated: "true",
+    page: String(params.page || 1),
+    limit: String(params.limit || 20),
+    sortBy: params.sortBy || "updatedAt",
+    sortOrder: params.sortOrder || "desc",
+  });
+
+  if (params.search?.trim()) {
+    searchParams.set("search", params.search.trim());
+  }
+
+  if (params.folderId) {
+    searchParams.set("folderId", params.folderId);
+  }
+
+  if (params.favoritesOnly) {
+    searchParams.set("favoritesOnly", "true");
+  }
+
+  const response = await fetch(`${API_BASE}/video?${searchParams}`);
+  return handleResponse<PaginatedResponse<DBVideoTrack>>(response);
+}
+
+export async function fetchVideo(id: string): Promise<DBVideoTrack> {
+  const response = await fetch(`${API_BASE}/video/${id}`);
+  return handleResponse<DBVideoTrack>(response);
+}
+
+export interface CreateVideoInput {
+  title: string;
+  description?: string;
+  format: VideoFormat;
+  fileSize: number;
+  durationSeconds?: number;
+  s3Key: string;
+  originalFilename?: string;
+  coverUrl?: string;
+}
+
+export async function createVideo(
+  input: CreateVideoInput
+): Promise<DBVideoTrack> {
+  const response = await fetch(`${API_BASE}/video`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return handleResponse<DBVideoTrack>(response);
+}
+
+export interface UpdateVideoInput {
+  title?: string;
+  description?: string;
+  currentPosition?: number;
+  durationSeconds?: number;
+  coverUrl?: string;
+  isFavorite?: boolean;
+  completed?: boolean;
+}
+
+export async function updateVideo(
+  id: string,
+  input: UpdateVideoInput
+): Promise<DBVideoTrack> {
+  const response = await fetch(`${API_BASE}/video/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return handleResponse<DBVideoTrack>(response);
+}
+
+export async function deleteVideo(id: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/video/${id}`, { method: "DELETE" });
+  await handleResponse<{ success: boolean }>(response);
+}
+
+export async function toggleVideoFavorite(
+  id: string,
+  isFavorite: boolean
+): Promise<DBVideoTrack> {
+  return updateVideo(id, { isFavorite });
+}
+
+// Video upload functions
+export async function uploadVideoFile(
+  videoId: string,
+  file: File,
+  onProgress?: (progress: number) => void
+): Promise<string> {
+  const formData = new FormData();
+  formData.append("videoId", videoId);
+  formData.append("file", file);
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+
+    if (onProgress) {
+      xhr.upload.addEventListener("progress", (e) => {
+        if (e.lengthComputable) {
+          onProgress((e.loaded / e.total) * 100);
+        }
+      });
+    }
+
+    xhr.addEventListener("load", () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        const result = JSON.parse(xhr.responseText);
+        resolve(result.s3Key);
+      } else {
+        try {
+          const error = JSON.parse(xhr.responseText);
+          reject(new ApiError(xhr.status, error.message || "Upload failed"));
+        } catch {
+          reject(new ApiError(xhr.status, "Upload failed"));
+        }
+      }
+    });
+
+    xhr.addEventListener("error", () => {
+      reject(new ApiError(0, "Network error during upload"));
+    });
+
+    xhr.open("POST", `${API_BASE}/video/upload`);
+    xhr.send(formData);
+  });
+}
+
+export async function uploadVideoCover(
+  videoId: string,
+  file: File
+): Promise<string> {
+  const formData = new FormData();
+  formData.append("videoId", videoId);
+  formData.append("file", file);
+
+  const response = await fetch(`${API_BASE}/video/cover-upload`, {
+    method: "POST",
+    body: formData,
+  });
+  const result = await handleResponse<{ s3Key: string }>(response);
+  return result.s3Key;
+}
+
+export function getVideoStreamUrl(s3Key: string): string {
+  return `${API_BASE}/video/stream?s3Key=${encodeURIComponent(s3Key)}`;
+}
+
+export function getVideoDownloadUrl(s3Key: string, filename?: string): string {
+  let url = `${API_BASE}/video/download?s3Key=${encodeURIComponent(s3Key)}`;
+  if (filename) {
+    url += `&filename=${encodeURIComponent(filename)}`;
+  }
+  return url;
+}
+
+// Video bookmarks
+export async function fetchVideoBookmarks(
+  videoId: string
+): Promise<DBVideoBookmark[]> {
+  const response = await fetch(`${API_BASE}/video/${videoId}/bookmarks`);
+  return handleResponse<DBVideoBookmark[]>(response);
+}
+
+export async function addVideoBookmark(
+  videoId: string,
+  positionSeconds: number,
+  label?: string
+): Promise<DBVideoBookmark> {
+  const response = await fetch(`${API_BASE}/video/${videoId}/bookmarks`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ positionSeconds, label }),
+  });
+  return handleResponse<DBVideoBookmark>(response);
+}
+
+export async function removeVideoBookmark(
+  videoId: string,
+  positionSeconds: number
+): Promise<void> {
+  const response = await fetch(`${API_BASE}/video/${videoId}/bookmarks`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ positionSeconds }),
+  });
+  await handleResponse<{ success: boolean }>(response);
+}
+
+// Video sessions
+export async function startVideoSession(
+  videoId: string,
+  startPosition: number
+): Promise<DBVideoSession> {
+  const response = await fetch(`${API_BASE}/video/${videoId}/sessions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ startPosition }),
+  });
+  return handleResponse<DBVideoSession>(response);
+}
+
+export async function endVideoSession(
+  videoId: string,
+  sessionId: string,
+  endPosition: number,
+  durationSeconds: number
+): Promise<DBVideoSession> {
+  const response = await fetch(`${API_BASE}/video/${videoId}/sessions`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sessionId, endPosition, durationSeconds }),
+  });
+  return handleResponse<DBVideoSession>(response);
+}
+
+// ============================================================================
+// Media Folders API (December 2024)
+// ============================================================================
+
+import type {
+  DBMediaFolder,
+  DBMediaFolderItem,
+  DBMediaFolderItemWithDetails,
+  MediaItemType,
+} from "@/types";
+
+export async function fetchMediaFolders(): Promise<DBMediaFolder[]> {
+  const response = await fetch(`${API_BASE}/media-folders`);
+  return handleResponse<DBMediaFolder[]>(response);
+}
+
+export interface FetchMediaFoldersPaginatedParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  sortBy?: "name" | "sortOrder" | "updatedAt" | "createdAt";
+  sortOrder?: "asc" | "desc";
+}
+
+export async function fetchMediaFoldersPaginated(
+  params: FetchMediaFoldersPaginatedParams = {}
+): Promise<PaginatedResponse<DBMediaFolder>> {
+  const searchParams = new URLSearchParams({
+    paginated: "true",
+    page: String(params.page || 1),
+    limit: String(params.limit || 20),
+    sortBy: params.sortBy || "sortOrder",
+    sortOrder: params.sortOrder || "asc",
+  });
+
+  if (params.search?.trim()) {
+    searchParams.set("search", params.search.trim());
+  }
+
+  const response = await fetch(`${API_BASE}/media-folders?${searchParams}`);
+  return handleResponse<PaginatedResponse<DBMediaFolder>>(response);
+}
+
+export async function fetchMediaFolder(id: string): Promise<DBMediaFolder> {
+  const response = await fetch(`${API_BASE}/media-folders/${id}`);
+  return handleResponse<DBMediaFolder>(response);
+}
+
+export interface CreateMediaFolderInput {
+  name: string;
+  description?: string;
+  color?: string;
+  icon?: string;
+  coverUrl?: string;
+}
+
+export async function createMediaFolder(
+  input: CreateMediaFolderInput
+): Promise<DBMediaFolder> {
+  const response = await fetch(`${API_BASE}/media-folders`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return handleResponse<DBMediaFolder>(response);
+}
+
+export interface UpdateMediaFolderInput {
+  name?: string;
+  description?: string;
+  color?: string;
+  icon?: string;
+  sortOrder?: number;
+  coverUrl?: string;
+}
+
+export async function updateMediaFolder(
+  id: string,
+  input: UpdateMediaFolderInput
+): Promise<DBMediaFolder> {
+  const response = await fetch(`${API_BASE}/media-folders/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return handleResponse<DBMediaFolder>(response);
+}
+
+export async function deleteMediaFolder(id: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/media-folders/${id}`, {
+    method: "DELETE",
+  });
+  await handleResponse<{ success: boolean }>(response);
+}
+
+// Media folder items
+export async function fetchMediaFolderItems(
+  folderId: string
+): Promise<DBMediaFolderItemWithDetails[]> {
+  const response = await fetch(`${API_BASE}/media-folders/${folderId}/items`);
+  return handleResponse<DBMediaFolderItemWithDetails[]>(response);
+}
+
+export interface FetchMediaFolderItemsParams {
+  page?: number;
+  limit?: number;
+  itemType?: "book" | "audio" | "video";
+}
+
+export async function fetchMediaFolderItemsPaginated(
+  folderId: string,
+  params: FetchMediaFolderItemsParams = {}
+): Promise<PaginatedResponse<DBMediaFolderItemWithDetails>> {
+  const searchParams = new URLSearchParams();
+  searchParams.set("paginate", "true");
+  if (params.page) searchParams.set("page", params.page.toString());
+  if (params.limit) searchParams.set("limit", params.limit.toString());
+  if (params.itemType) searchParams.set("itemType", params.itemType);
+
+  const response = await fetch(
+    `${API_BASE}/media-folders/${folderId}/items?${searchParams}`
+  );
+  return handleResponse<PaginatedResponse<DBMediaFolderItemWithDetails>>(
+    response
+  );
+}
+
+export async function addItemToMediaFolder(
+  folderId: string,
+  itemType: MediaItemType,
+  itemId: string,
+  notes?: string
+): Promise<DBMediaFolderItem> {
+  const response = await fetch(`${API_BASE}/media-folders/${folderId}/items`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ itemType, itemId, notes }),
+  });
+  return handleResponse<DBMediaFolderItem>(response);
+}
+
+export async function updateMediaFolderItem(
+  folderId: string,
+  itemId: string,
+  input: { notes?: string; sortOrder?: number }
+): Promise<DBMediaFolderItem> {
+  const response = await fetch(`${API_BASE}/media-folders/${folderId}/items`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ itemId, ...input }),
+  });
+  return handleResponse<DBMediaFolderItem>(response);
+}
+
+export async function removeItemFromMediaFolder(
+  folderId: string,
+  itemId: string,
+  itemType?: MediaItemType
+): Promise<void> {
+  const response = await fetch(`${API_BASE}/media-folders/${folderId}/items`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ itemId, itemType }),
+  });
+  await handleResponse<{ success: boolean }>(response);
+}
+
+export async function reorderMediaFolderItems(
+  folderId: string,
+  itemIds: string[]
+): Promise<void> {
+  const response = await fetch(`${API_BASE}/media-folders/${folderId}/items`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ itemIds }),
+  });
+  await handleResponse<{ success: boolean }>(response);
 }

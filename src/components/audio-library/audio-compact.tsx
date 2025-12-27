@@ -9,6 +9,7 @@ import {
   Trash,
   Edit,
   Bookmark,
+  FolderPlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -41,6 +42,7 @@ export function AudioCompact({
   onDelete,
   onDownload,
   onToggleFavorite,
+  onAddToFolder,
 }: AudioCompactProps) {
   if (tracks.length === 0) {
     return (
@@ -185,6 +187,12 @@ export function AudioCompact({
                     <Download className="w-4 h-4 mr-2" />
                     Download
                   </DropdownMenuItem>
+                  {onAddToFolder && (
+                    <DropdownMenuItem onClick={() => onAddToFolder(track)}>
+                      <FolderPlus className="w-4 h-4 mr-2" />
+                      Add to Folder
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={() => onDelete(track)}

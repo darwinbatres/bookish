@@ -8,6 +8,8 @@ import {
   ShoppingCart,
   LogOut,
   Music,
+  Video,
+  Folder,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
@@ -136,6 +138,36 @@ export function MobileNav({
               >
                 <Music className="w-5 h-5" />
                 Audio
+              </button>
+              <button
+                onClick={() => {
+                  onViewChange("video");
+                  setIsOpen(false);
+                }}
+                className={cn(
+                  "w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-medium transition-colors",
+                  activeView === "video"
+                    ? "bg-secondary text-secondary-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-secondary/60 active:bg-secondary"
+                )}
+              >
+                <Video className="w-5 h-5" />
+                Videos
+              </button>
+              <button
+                onClick={() => {
+                  onViewChange("folders");
+                  setIsOpen(false);
+                }}
+                className={cn(
+                  "w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-medium transition-colors",
+                  activeView === "folders"
+                    ? "bg-secondary text-secondary-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-secondary/60 active:bg-secondary"
+                )}
+              >
+                <Folder className="w-5 h-5" />
+                Folders
               </button>
               <button
                 onClick={() => {

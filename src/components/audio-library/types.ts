@@ -10,4 +10,5 @@ export interface AudioTrackActions {
   onDelete: (track: DBAudioTrack) => void;
   onDownload: (track: DBAudioTrack) => void;
   onToggleFavorite: (track: DBAudioTrack) => void;
+  onAddToFolder?: (track: DBAudioTrack) => void;
 }

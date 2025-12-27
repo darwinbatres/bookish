@@ -8,6 +8,8 @@ import {
   setCoverMaxSizeMB,
   getAudioMaxSizeMB,
   setAudioMaxSizeMB,
+  getVideoMaxSizeMB,
+  setVideoMaxSizeMB,
 } from "@/lib/db";
 
 export interface PublicSettings {
@@ -29,6 +31,10 @@ export interface PublicSettings {
     allowedTypes: string[];
   };
   audio: {
+    maxSizeMB: number;
+    allowedTypes: string[];
+  };
+  video: {
     maxSizeMB: number;
     allowedTypes: string[];
   };
@@ -56,6 +62,9 @@ interface UpdateSettingsRequest {
   audio?: {
     maxSizeMB?: number;
   };
+  video?: {
+    maxSizeMB?: number;
+  };
 }
 
 async function handler(
@@ -68,11 +77,13 @@ async function handler(
   if (req.method === "GET") {
     try {
       // Get max sizes from database (with defaults)
-      const [maxSizeMB, coverMaxSizeMB, audioMaxSizeMB] = await Promise.all([
-        getUploadMaxSizeMB(),
-        getCoverMaxSizeMB(),
-        getAudioMaxSizeMB(),
-      ]);
+      const [maxSizeMB, coverMaxSizeMB, audioMaxSizeMB, videoMaxSizeMB] =
+        await Promise.all([
+          getUploadMaxSizeMB(),
+          getCoverMaxSizeMB(),
+          getAudioMaxSizeMB(),
+          getVideoMaxSizeMB(),
+        ]);
 
       const settings: PublicSettings = {
         app: {
@@ -102,6 +113,17 @@ async function handler(
             "audio/flac",
             "audio/aac",
             "audio/webm",
+          ],
+        },
+        video: {
+          maxSizeMB: videoMaxSizeMB,
+          allowedTypes: [
+            "video/mp4",
+            "video/webm",
+            "video/x-matroska",
+            "video/quicktime",
+            "video/x-msvideo",
+            "video/x-m4v",
           ],
         },
         storage: {
@@ -182,6 +204,24 @@ async function handler(
         }
 
         await setAudioMaxSizeMB(Math.floor(audioMaxSizeMB));
+      }
+
+      // Validate and update max video size
+      if (body.video?.maxSizeMB !== undefined) {
+        const videoMaxSizeMB = body.video.maxSizeMB;
+
+        // Validate: must be a positive number, max 4GB for video
+        if (
+          typeof videoMaxSizeMB !== "number" ||
+          videoMaxSizeMB < 1 ||
+          videoMaxSizeMB > 4096
+        ) {
+          return res.status(400).json({
+            error: "video.maxSizeMB must be between 1 and 4096 MB",
+          });
+        }
+
+        await setVideoMaxSizeMB(Math.floor(videoMaxSizeMB));
       }
 
       return res.status(200).json({ success: true });

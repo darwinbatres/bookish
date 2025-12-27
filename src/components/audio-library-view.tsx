@@ -4,6 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AudioTrackCard } from "./audio-track-card";
 import { AudioUpload } from "./audio-upload";
 import { AudioEditModal } from "./audio-edit-modal";
+import { AddToFolderModal } from "@/components/add-to-folder-modal";
 import { SearchInput, PaginationControls } from "./library";
 import {
   AudioGrid,
@@ -63,6 +64,8 @@ interface AudioLibraryViewProps {
   onClosePlayer: () => void;
   /** If provided, will be used to update a track in the list without refetching */
   trackUpdate?: DBAudioTrack | null;
+  /** Called when a track is edited via the modal, so parent can sync player state */
+  onTrackEdited?: (track: DBAudioTrack) => void;
 }
 
 export function AudioLibraryView({
@@ -72,6 +75,7 @@ export function AudioLibraryView({
   onPause,
   onClosePlayer,
   trackUpdate,
+  onTrackEdited,
 }: AudioLibraryViewProps) {
   const [tracks, setTracks] = useState<DBAudioTrack[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,6 +87,7 @@ export function AudioLibraryView({
   const [viewMode, setViewMode] = useState<AudioViewMode>(getStoredViewMode);
   const [deleteTarget, setDeleteTarget] = useState<DBAudioTrack | null>(null);
   const [editTarget, setEditTarget] = useState<DBAudioTrack | null>(null);
+  const [folderTarget, setFolderTarget] = useState<DBAudioTrack | null>(null);
 
   // Persist view mode
   const handleViewModeChange = useCallback((mode: AudioViewMode) => {
@@ -301,6 +306,7 @@ export function AudioLibraryView({
               onDelete={setDeleteTarget}
               onDownload={handleDownload}
               onToggleFavorite={handleToggleFavorite}
+              onAddToFolder={setFolderTarget}
             />
           ) : (
             <AudioCompact
@@ -313,6 +319,7 @@ export function AudioLibraryView({
               onDelete={setDeleteTarget}
               onDownload={handleDownload}
               onToggleFavorite={handleToggleFavorite}
+              onAddToFolder={setFolderTarget}
             />
           )}
         </div>
@@ -362,7 +369,23 @@ export function AudioLibraryView({
         track={editTarget}
         open={!!editTarget}
         onOpenChange={(open) => !open && setEditTarget(null)}
-        onTrackUpdated={loadTracks}
+        onTrackUpdated={(updatedTrack) => {
+          // Update local list
+          setTracks((prev) =>
+            prev.map((t) => (t.id === updatedTrack.id ? updatedTrack : t))
+          );
+          // Notify parent so it can sync player state
+          onTrackEdited?.(updatedTrack);
+        }}
+      />
+
+      {/* Add to Folder Modal */}
+      <AddToFolderModal
+        open={!!folderTarget}
+        onOpenChange={(open) => !open && setFolderTarget(null)}
+        itemId={folderTarget?.id || ""}
+        itemType="audio"
+        itemTitle={folderTarget?.title || ""}
       />
     </div>
   );

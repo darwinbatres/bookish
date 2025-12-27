@@ -8,6 +8,7 @@ import {
 } from "@/lib/api/client";
 import { BookCover } from "./book-cover";
 import { EditBookModal } from "./edit-book-modal";
+import { AddToFolderModal } from "@/components/add-to-folder-modal";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -42,6 +43,7 @@ import {
   Download,
   Pencil,
   Star,
+  FolderPlus,
 } from "lucide-react";
 import { useState, useCallback, useEffect } from "react";
 import { toast } from "sonner";
@@ -73,6 +75,7 @@ export function BookTable({
 }: BookTableProps) {
   const [deleteTarget, setDeleteTarget] = useState<DBBook | null>(null);
   const [editTarget, setEditTarget] = useState<DBBook | null>(null);
+  const [folderTarget, setFolderTarget] = useState<DBBook | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [collections, setCollections] = useState<DBCollection[]>([]);
 
@@ -430,6 +433,10 @@ export function BookTable({
                       <Download className="w-4 h-4 mr-2" />
                       Download Book
                     </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setFolderTarget(book)}>
+                      <FolderPlus className="w-4 h-4 mr-2" />
+                      Add to Folder
+                    </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onClick={() => setDeleteTarget(book)}
@@ -479,6 +486,15 @@ export function BookTable({
         open={!!editTarget}
         onOpenChange={(open) => !open && setEditTarget(null)}
         onBookUpdated={onBooksChange}
+      />
+
+      {/* Add to Folder Modal */}
+      <AddToFolderModal
+        open={!!folderTarget}
+        onOpenChange={(open) => !open && setFolderTarget(null)}
+        itemId={folderTarget?.id || ""}
+        itemType="book"
+        itemTitle={folderTarget?.title || ""}
       />
     </div>
   );

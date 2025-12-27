@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import {
   Loader2,
   Star,
-  Music2,
+  Video,
   Upload,
   X,
   ImageIcon,
@@ -20,21 +20,19 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { AutocompleteInput } from "@/components/ui/autocomplete-input";
 import {
-  updateAudioTrack,
-  fetchAudioMetadata,
-  uploadAudioCover,
+  updateVideo,
+  uploadVideoCover,
   getDownloadUrl,
 } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
-import type { DBAudioTrack } from "@/types/audio";
+import type { DBVideoTrack } from "@/types/video";
 
-interface AudioEditModalProps {
-  track: DBAudioTrack | null;
+interface VideoEditModalProps {
+  track: DBVideoTrack | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onTrackUpdated: (updatedTrack: DBAudioTrack) => void;
+  onTrackUpdated: (updatedTrack: DBVideoTrack) => void;
 }
 
 const ALLOWED_IMAGE_TYPES = [
@@ -44,19 +42,16 @@ const ALLOWED_IMAGE_TYPES = [
   "image/gif",
 ];
 
-export function AudioEditModal({
+export function VideoEditModal({
   track,
   open,
   onOpenChange,
   onTrackUpdated,
-}: AudioEditModalProps) {
+}: VideoEditModalProps) {
   const [title, setTitle] = useState("");
-  const [artist, setArtist] = useState("");
-  const [album, setAlbum] = useState("");
+  const [description, setDescription] = useState("");
   const [isFavorite, setIsFavorite] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [existingArtists, setExistingArtists] = useState<string[]>([]);
-  const [existingAlbums, setExistingAlbums] = useState<string[]>([]);
 
   // Cover image state
   const [coverFile, setCoverFile] = useState<File | null>(null);
@@ -76,42 +71,23 @@ export function AudioEditModal({
           setMaxCoverSizeMB(settings.cover.maxSizeMB);
         }
       })
-      .catch(() => {
-        // Use default if settings fetch fails
-      });
+      .catch(() => {});
   }, []);
 
   const maxCoverSize = maxCoverSizeMB * 1024 * 1024;
-
-  // Fetch existing albums and artists for autocomplete when modal opens
-  useEffect(() => {
-    if (open) {
-      fetchAudioMetadata()
-        .then(({ albums, artists }) => {
-          setExistingAlbums(albums);
-          setExistingArtists(artists);
-        })
-        .catch(() => {
-          // Ignore errors, autocomplete will just be empty
-        });
-    }
-  }, [open]);
 
   // Reset form when track changes
   useEffect(() => {
     if (track) {
       setTitle(track.title);
-      setArtist(track.artist || "");
-      setAlbum(track.album || "");
+      setDescription(track.description || "");
       setIsFavorite(track.isFavorite);
       setCoverFile(null);
       setCoverPreview(null);
       setRemoveCover(false);
 
-      // Load existing cover if available
       if (track.coverUrl) {
-        // If it's an S3 key, we need to get a signed URL
-        if (track.coverUrl.startsWith("audio-covers/")) {
+        if (track.coverUrl.startsWith("video-covers/")) {
           getDownloadUrl(track.coverUrl)
             .then(({ downloadUrl }) => setExistingCoverUrl(downloadUrl))
             .catch(() => setExistingCoverUrl(null));
@@ -124,10 +100,8 @@ export function AudioEditModal({
     }
   }, [track]);
 
-  // Process and validate image file (used by both file input and paste)
   const processImageFile = useCallback(
     (file: File) => {
-      // Validate file type
       if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
         toast.error("Invalid file type", {
           description: "Please select a JPEG, PNG, WebP, or GIF image.",
@@ -135,7 +109,6 @@ export function AudioEditModal({
         return;
       }
 
-      // Validate file size
       if (file.size > maxCoverSize) {
         toast.error("File too large", {
           description: `Cover image must be less than ${maxCoverSizeMB}MB.`,
@@ -146,7 +119,6 @@ export function AudioEditModal({
       setCoverFile(file);
       setRemoveCover(false);
 
-      // Create preview
       const reader = new FileReader();
       reader.onloadend = () => {
         setCoverPreview(reader.result as string);
@@ -165,7 +137,7 @@ export function AudioEditModal({
     [processImageFile]
   );
 
-  // Global paste handler when dialog is open
+  // Global paste handler
   useEffect(() => {
     if (!open) return;
 
@@ -213,14 +185,13 @@ export function AudioEditModal({
     try {
       let newCoverUrl: string | undefined = undefined;
 
-      // Handle cover upload
       if (coverFile) {
         setIsUploadingCover(true);
         try {
-          const { s3Key } = await uploadAudioCover(track.id, coverFile);
+          const s3Key = await uploadVideoCover(track.id, coverFile);
           newCoverUrl = s3Key;
         } catch (error) {
-          console.error("[AudioEditModal] Failed to upload cover:", error);
+          console.error("[VideoEditModal] Failed to upload cover:", error);
           toast.error("Failed to upload cover image");
           setIsUploadingCover(false);
           setIsSaving(false);
@@ -228,28 +199,26 @@ export function AudioEditModal({
         }
         setIsUploadingCover(false);
       } else if (removeCover) {
-        // Set to empty string to indicate removal
         newCoverUrl = "";
       }
 
-      const updatedTrack = await updateAudioTrack(track.id, {
+      const updatedTrack = await updateVideo(track.id, {
         title: trimmedTitle,
-        artist: artist.trim() || undefined,
-        album: album.trim() || undefined,
+        description: description.trim() || undefined,
         isFavorite,
         ...(newCoverUrl !== undefined && {
           coverUrl: newCoverUrl || undefined,
         }),
       });
 
-      toast.success("Track updated", {
+      toast.success("Video updated", {
         description: `"${trimmedTitle}" has been updated.`,
       });
       onTrackUpdated(updatedTrack);
       onOpenChange(false);
     } catch (error) {
-      console.error("[AudioEditModal] Failed to update track:", error);
-      toast.error("Failed to update track", {
+      console.error("[VideoEditModal] Failed to update video:", error);
+      toast.error("Failed to update video", {
         description: "Please try again later.",
       });
     } finally {
@@ -259,14 +228,12 @@ export function AudioEditModal({
 
   const hasChanges = track
     ? title.trim() !== track.title ||
-      (artist.trim() || "") !== (track.artist || "") ||
-      (album.trim() || "") !== (track.album || "") ||
+      (description.trim() || "") !== (track.description || "") ||
       isFavorite !== track.isFavorite ||
       coverFile !== null ||
       removeCover
     : false;
 
-  // Format duration for display
   const formatDuration = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
@@ -277,7 +244,6 @@ export function AudioEditModal({
     return `${mins}m ${secs}s`;
   };
 
-  // Format file size for display
   const formatFileSize = (bytes: number) => {
     if (bytes >= 1024 * 1024 * 1024) {
       return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
@@ -298,11 +264,11 @@ export function AudioEditModal({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Music2 className="h-5 w-5 text-muted-foreground" />
-            Edit Track
+            <Video className="h-5 w-5 text-rose-500" />
+            Edit Video
           </DialogTitle>
           <DialogDescription>
-            Update the track&apos;s details, cover image, or mark it as a
+            Update the video&apos;s details, cover image, or mark it as a
             favorite.
           </DialogDescription>
         </DialogHeader>
@@ -312,10 +278,9 @@ export function AudioEditModal({
           <div className="space-y-2">
             <Label>Cover Image</Label>
             <div className="flex items-start gap-4">
-              {/* Cover Preview */}
               <div
                 className={cn(
-                  "w-20 h-20 rounded-lg border-2 border-dashed flex items-center justify-center overflow-hidden transition-all",
+                  "w-24 h-14 rounded-lg border-2 border-dashed flex items-center justify-center overflow-hidden transition-all",
                   displayCover
                     ? "border-transparent"
                     : "border-border bg-secondary/30"
@@ -332,7 +297,6 @@ export function AudioEditModal({
                 )}
               </div>
 
-              {/* Upload Controls */}
               <div className="flex-1 space-y-2">
                 <input
                   ref={fileInputRef}
@@ -384,40 +348,24 @@ export function AudioEditModal({
               id="edit-title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Track title"
+              placeholder="Video title"
               disabled={isSaving}
             />
           </div>
 
-          {/* Artist */}
+          {/* Description */}
           <div className="space-y-2">
-            <Label htmlFor="edit-artist">Artist</Label>
-            <AutocompleteInput
-              id="edit-artist"
-              value={artist}
-              onChange={setArtist}
-              suggestions={existingArtists}
-              placeholder="Select or type artist..."
-              emptyText="Type to add new artist"
+            <Label htmlFor="edit-description">Description</Label>
+            <Input
+              id="edit-description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Optional description"
               disabled={isSaving}
             />
           </div>
 
-          {/* Album */}
-          <div className="space-y-2">
-            <Label htmlFor="edit-album">Album</Label>
-            <AutocompleteInput
-              id="edit-album"
-              value={album}
-              onChange={setAlbum}
-              suggestions={existingAlbums}
-              placeholder="Select or type album..."
-              emptyText="Type to add new album"
-              disabled={isSaving}
-            />
-          </div>
-
-          {/* Favorite Toggle - matching book modal styling */}
+          {/* Favorite Toggle */}
           <div className="flex items-center gap-3 pt-2">
             <button
               type="button"
@@ -443,7 +391,7 @@ export function AudioEditModal({
             </button>
           </div>
 
-          {/* Track Info */}
+          {/* Video Info */}
           {track && (
             <div className="text-xs text-muted-foreground space-y-1 pt-2 border-t">
               <p>
@@ -460,12 +408,6 @@ export function AudioEditModal({
                 <span className="font-medium">Size:</span>{" "}
                 {formatFileSize(track.fileSize)}
               </p>
-              {track.originalFilename && (
-                <p className="truncate" title={track.originalFilename}>
-                  <span className="font-medium">File:</span>{" "}
-                  {track.originalFilename}
-                </p>
-              )}
             </div>
           )}
 

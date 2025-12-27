@@ -11,3 +11,9 @@ export * from "./playlists";
 export * from "./playlist-items";
 export * from "./audio-bookmarks";
 export * from "./listening-sessions";
+// Video support (December 2024)
+export * from "./video-tracks";
+export * from "./video-bookmarks";
+export * from "./video-sessions";
+// Media folders (December 2024)
+export * from "./media-folders";

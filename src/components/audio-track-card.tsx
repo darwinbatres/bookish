@@ -8,6 +8,7 @@ import {
   Trash2,
   Edit,
   CheckCircle2,
+  FolderPlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,6 +19,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { AudioCover } from "@/components/audio-cover";
+import { AddToFolderModal } from "@/components/add-to-folder-modal";
 import { cn } from "@/lib/utils";
 import type { DBAudioTrack } from "@/types";
 import { formatDuration } from "@/types/audio";
@@ -46,6 +48,7 @@ export function AudioTrackCard({
   onToggleFavorite,
 }: AudioTrackCardProps) {
   const [isAnimating, setIsAnimating] = useState(false);
+  const [showFolderModal, setShowFolderModal] = useState(false);
 
   const handleFavoriteClick = () => {
     setIsAnimating(true);
@@ -158,6 +161,10 @@ export function AudioTrackCard({
               <Download className="mr-2 h-4 w-4" />
               Download
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setShowFolderModal(true)}>
+              <FolderPlus className="mr-2 h-4 w-4" />
+              Add to Folder
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() => onDelete(track)}
@@ -169,6 +176,14 @@ export function AudioTrackCard({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      <AddToFolderModal
+        open={showFolderModal}
+        onOpenChange={setShowFolderModal}
+        itemId={track.id}
+        itemType="audio"
+        itemTitle={track.title}
+      />
     </div>
   );
 }

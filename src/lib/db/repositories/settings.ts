@@ -155,3 +155,17 @@ export async function setAudioMaxSizeMB(sizeMB: number): Promise<void> {
     "Maximum audio file size in megabytes"
   );
 }
+
+// Video settings (December 2024)
+export async function getVideoMaxSizeMB(): Promise<number> {
+  const value = await getSetting<number>("video.upload.maxSizeMB");
+  return value ?? 2048; // Default to 2GB for video files
+}
+
+export async function setVideoMaxSizeMB(sizeMB: number): Promise<void> {
+  await setSetting(
+    "video.upload.maxSizeMB",
+    sizeMB,
+    "Maximum video file upload size in megabytes"
+  );
+}

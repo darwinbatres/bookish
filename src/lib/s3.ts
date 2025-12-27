@@ -306,3 +306,63 @@ export async function checkS3Health(): Promise<boolean> {
     return false;
   }
 }
+
+// ============================================================================
+// Video Support (December 2024)
+// ============================================================================
+
+/**
+ * Generate a unique S3 key for a video file
+ */
+export function generateVideoS3Key(videoId: string, filename: string): string {
+  const ext = filename.split(".").pop()?.toLowerCase() || "mp4";
+  const timestamp = Date.now();
+  return `video/${videoId}/${timestamp}.${ext}`;
+}
+
+/**
+ * Generate a unique S3 key for a video cover/thumbnail image
+ */
+export function generateVideoCoverS3Key(
+  videoId: string,
+  filename: string
+): string {
+  const ext = filename.split(".").pop()?.toLowerCase() || "jpg";
+  const timestamp = Date.now();
+  return `video-covers/${videoId}/${timestamp}.${ext}`;
+}
+
+/**
+ * Get allowed content types for video uploads
+ */
+export function getAllowedVideoContentTypes(): string[] {
+  return [
+    "video/mp4", // mp4
+    "video/webm", // webm
+    "video/x-matroska", // mkv
+    "video/quicktime", // mov
+    "video/x-msvideo", // avi
+    "video/x-m4v", // m4v
+  ];
+}
+
+/**
+ * Validate content type for video uploads
+ */
+export function isValidVideoContentType(contentType: string): boolean {
+  return getAllowedVideoContentTypes().includes(contentType.toLowerCase());
+}
+
+/**
+ * Get video format from content type
+ */
+export function getVideoFormatFromContentType(contentType: string): string {
+  const ct = contentType.toLowerCase();
+  if (ct.includes("mp4")) return "mp4";
+  if (ct.includes("webm")) return "webm";
+  if (ct.includes("matroska")) return "mkv";
+  if (ct.includes("quicktime")) return "mov";
+  if (ct.includes("msvideo") || ct.includes("avi")) return "avi";
+  if (ct.includes("m4v")) return "m4v";
+  return "mp4"; // default
+}

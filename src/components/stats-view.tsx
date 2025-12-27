@@ -20,6 +20,8 @@ import {
   Music,
   ListMusic,
   Headphones,
+  Video,
+  Folder,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageLayout } from "@/components/ui/page-layout";
@@ -282,6 +284,107 @@ export function StatsView() {
         </div>
       )}
 
+      {/* Video Library */}
+      {stats.videoStats && (
+        <div className="space-y-4">
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+            Video Library
+          </h3>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <StatCard
+              icon={Video}
+              label="Video Tracks"
+              value={stats.videoStats.totalTracks}
+              iconColor="text-rose-500"
+            />
+            <StatCard
+              icon={Star}
+              label="Favorites"
+              value={stats.videoStats.totalFavorites}
+              iconColor="text-amber-500"
+            />
+            <StatCard
+              icon={CheckCircle2}
+              label="Completed"
+              value={stats.videoStats.completedTracks}
+              subValue={
+                stats.videoStats.totalTracks > 0
+                  ? `${Math.round((stats.videoStats.completedTracks / stats.videoStats.totalTracks) * 100)}% of videos`
+                  : undefined
+              }
+              iconColor="text-green-500"
+            />
+            <StatCard
+              icon={Clock}
+              label="Watch Time"
+              value={formatReadingTime(stats.videoStats.totalWatchTime)}
+              iconColor="text-cyan-500"
+            />
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <StatCard
+              icon={Activity}
+              label="Sessions"
+              value={stats.videoStats.totalWatchingSessions}
+            />
+            <StatCard
+              icon={Bookmark}
+              label="Bookmarks"
+              value={stats.videoStats.totalVideoBookmarks}
+            />
+            <StatCard
+              icon={HardDrive}
+              label="Video Storage"
+              value={formatBytes(stats.videoStats.totalStorageBytes)}
+              iconColor="text-rose-500"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Media Folders */}
+      {stats.mediaFoldersStats && (
+        <div className="space-y-4">
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+            Media Folders
+          </h3>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <StatCard
+              icon={Folder}
+              label="Total Folders"
+              value={stats.mediaFoldersStats.totalFolders}
+              iconColor="text-orange-500"
+            />
+            <StatCard
+              icon={FileText}
+              label="Total Items"
+              value={stats.mediaFoldersStats.totalItems}
+              subValue="Across all folders"
+            />
+            <StatCard
+              icon={BookOpen}
+              label="Books in Folders"
+              value={stats.mediaFoldersStats.bookItems}
+              iconColor="text-blue-500"
+            />
+            <StatCard
+              icon={Music}
+              label="Audio in Folders"
+              value={stats.mediaFoldersStats.audioItems}
+              iconColor="text-violet-500"
+            />
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <StatCard
+              icon={Video}
+              label="Videos in Folders"
+              value={stats.mediaFoldersStats.videoItems}
+              iconColor="text-rose-500"
+            />
+          </div>
+        </div>
+      )}
+
       {/* Storage */}
       <div className="space-y-4">
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
@@ -302,19 +405,29 @@ export function StatsView() {
             iconColor="text-violet-500"
           />
           <StatCard
+            icon={Video}
+            label="Video Files"
+            value={formatBytes(stats.videoStats?.totalStorageBytes || 0)}
+            subValue="Video tracks"
+            iconColor="text-rose-500"
+          />
+          <StatCard
             icon={Database}
             label="Database"
             value={formatBytes(stats.databaseSizeBytes)}
             subValue="PostgreSQL size"
             iconColor="text-blue-500"
           />
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <StatCard
             icon={HardDrive}
             label="Total Storage"
             value={formatBytes(
               stats.totalStorageBytes +
                 stats.databaseSizeBytes +
-                (stats.audioStats?.totalStorageBytes || 0)
+                (stats.audioStats?.totalStorageBytes || 0) +
+                (stats.videoStats?.totalStorageBytes || 0)
             )}
             subValue="All files + DB"
             iconColor="text-emerald-500"
@@ -472,6 +585,46 @@ export function StatsView() {
                 <span className="text-muted-foreground">Last 30 days</span>
                 <span className="font-semibold">
                   {stats.recentActivity.audioTracksAddedLast30Days || 0}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="p-4 rounded-lg bg-card border border-border">
+            <div className="flex items-center gap-2 mb-3">
+              <Video className="w-4 h-4 text-rose-500" />
+              <span className="text-sm font-medium">Videos Added</span>
+            </div>
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Last 7 days</span>
+                <span className="font-semibold">
+                  {stats.recentActivity.videosAddedLast7Days || 0}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Last 30 days</span>
+                <span className="font-semibold">
+                  {stats.recentActivity.videosAddedLast30Days || 0}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="p-4 rounded-lg bg-card border border-border">
+            <div className="flex items-center gap-2 mb-3">
+              <Folder className="w-4 h-4 text-orange-500" />
+              <span className="text-sm font-medium">Folders Created</span>
+            </div>
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Last 7 days</span>
+                <span className="font-semibold">
+                  {stats.recentActivity.foldersAddedLast7Days || 0}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Last 30 days</span>
+                <span className="font-semibold">
+                  {stats.recentActivity.foldersAddedLast30Days || 0}
                 </span>
               </div>
             </div>

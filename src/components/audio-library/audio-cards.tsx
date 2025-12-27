@@ -10,6 +10,7 @@ import {
   Edit,
   Bookmark,
   HardDrive,
+  FolderPlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -50,6 +51,7 @@ export function AudioCards({
   onDelete,
   onDownload,
   onToggleFavorite,
+  onAddToFolder,
 }: AudioCardsProps) {
   if (tracks.length === 0) {
     return (
@@ -178,6 +180,12 @@ export function AudioCards({
                         <Download className="w-4 h-4 mr-2" />
                         Download
                       </DropdownMenuItem>
+                      {onAddToFolder && (
+                        <DropdownMenuItem onClick={() => onAddToFolder(track)}>
+                          <FolderPlus className="w-4 h-4 mr-2" />
+                          Add to Folder
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
                         onClick={() => onDelete(track)}

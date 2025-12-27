@@ -113,8 +113,15 @@ export const config = {
   get s3() {
     const env = getConfig();
     // Use S3 credentials if set, otherwise fall back to MinIO credentials
-    const accessKeyId = env.S3_ACCESS_KEY_ID || env.MINIO_ROOT_USER;
-    const secretAccessKey = env.S3_SECRET_ACCESS_KEY || env.MINIO_ROOT_PASSWORD;
+    // Note: Check for empty string explicitly since || only catches undefined/null
+    const accessKeyId =
+      env.S3_ACCESS_KEY_ID && env.S3_ACCESS_KEY_ID.trim()
+        ? env.S3_ACCESS_KEY_ID
+        : env.MINIO_ROOT_USER;
+    const secretAccessKey =
+      env.S3_SECRET_ACCESS_KEY && env.S3_SECRET_ACCESS_KEY.trim()
+        ? env.S3_SECRET_ACCESS_KEY
+        : env.MINIO_ROOT_PASSWORD;
     return {
       endpoint: env.S3_ENDPOINT,
       publicEndpoint: env.S3_PUBLIC_ENDPOINT || env.S3_ENDPOINT,

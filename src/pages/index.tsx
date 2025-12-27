@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
-import type { DBBook, DBCollection, DBAudioTrack } from "@/types";
+import type { DBBook, DBCollection, DBAudioTrack, DBVideoTrack } from "@/types";
 import { formatDuration } from "@/types/audio";
 import {
   fetchBook,
@@ -11,6 +11,7 @@ import {
   getAudioStreamUrl,
   getDownloadUrl,
   addAudioBookmark,
+  updateVideo,
 } from "@/lib/api/client";
 import { Sidebar, type ViewType } from "@/components/sidebar";
 import { MobileNav } from "@/components/mobile-nav";
@@ -20,8 +21,11 @@ import { StatsView } from "@/components/stats-view";
 import { SettingsView } from "@/components/settings-view";
 import { WishlistView } from "@/components/wishlist-view";
 import { AudioLibraryView } from "@/components/audio-library-view";
+import { VideoLibraryView } from "@/components/video-library-view";
+import { MediaFoldersView } from "@/components/media-folders-view";
 import { MiniPlayer } from "@/components/mini-player";
 import { FullPlayer } from "@/components/full-player";
+import { VideoPlayer } from "@/components/video-player";
 import { useAudioPlayer } from "@/hooks/use-audio-player";
 import { useMediaSession } from "@/hooks/use-media-session";
 import { useConfetti } from "@/hooks/use-confetti";
@@ -50,6 +54,17 @@ export default function Home() {
   const [queueIndex, setQueueIndex] = useState<number>(-1);
   // Track updates to propagate to AudioLibraryView (e.g., duration detected)
   const [trackUpdate, setTrackUpdate] = useState<DBAudioTrack | null>(null);
+
+  // Video player state
+  const [currentVideo, setCurrentVideo] = useState<DBVideoTrack | null>(null);
+  const [videoStreamUrl, setVideoStreamUrl] = useState<string | null>(null);
+  const lastSavedVideoPositionRef = useRef<number>(-1);
+  const currentVideoRef = useRef<DBVideoTrack | null>(null);
+
+  // Keep video ref in sync
+  useEffect(() => {
+    currentVideoRef.current = currentVideo;
+  }, [currentVideo]);
 
   // Refs for tracking save state (avoids closure issues and duplicate saves)
   const lastSavedPositionRef = useRef<number>(-1);
@@ -153,7 +168,7 @@ export default function Home() {
           .catch(() => {});
       }
     },
-    onPlayStateChange: (isPlaying) => {
+    onPlayStateChange: (_isPlaying) => {
       // Could trigger listening session tracking here
     },
   });
@@ -292,6 +307,69 @@ export default function Home() {
     }
   }, [currentTrack]);
 
+  // Video player handlers
+  const handlePlayVideo = useCallback(
+    async (video: DBVideoTrack, streamUrl: string) => {
+      lastSavedVideoPositionRef.current = -1;
+      setCurrentVideo(video);
+      setVideoStreamUrl(streamUrl);
+    },
+    []
+  );
+
+  const handleVideoTimeUpdate = useCallback((time: number) => {
+    // Save position every 10 seconds
+    const roundedTime = Math.floor(time / 10) * 10;
+    if (
+      currentVideoRef.current &&
+      roundedTime > 0 &&
+      roundedTime !== lastSavedVideoPositionRef.current
+    ) {
+      lastSavedVideoPositionRef.current = roundedTime;
+      updateVideo(currentVideoRef.current.id, {
+        currentPosition: Math.floor(time),
+      }).catch(() => {});
+    }
+  }, []);
+
+  const handleVideoEnded = useCallback(() => {
+    if (currentVideoRef.current) {
+      const video = currentVideoRef.current;
+      updateVideo(video.id, { completed: true })
+        .then(() => {
+          celebrate();
+          toast.success(`🎉 Completed: ${video.title}`);
+        })
+        .catch(() => {});
+    }
+  }, [celebrate]);
+
+  const handleVideoDurationChange = useCallback((duration: number) => {
+    if (
+      currentVideoRef.current &&
+      duration > 0 &&
+      (!currentVideoRef.current.durationSeconds ||
+        currentVideoRef.current.durationSeconds === 0)
+    ) {
+      const video = currentVideoRef.current;
+      updateVideo(video.id, { durationSeconds: Math.floor(duration) })
+        .then(() => {
+          setCurrentVideo((prev) =>
+            prev ? { ...prev, durationSeconds: Math.floor(duration) } : null
+          );
+        })
+        .catch(() => {});
+    }
+  }, []);
+
+  const handleCloseVideoPlayer = useCallback(() => {
+    if (currentVideoRef.current) {
+      // Position is saved via onTimeUpdate, just close
+    }
+    setCurrentVideo(null);
+    setVideoStreamUrl(null);
+  }, []);
+
   // Check authentication on mount
   useEffect(() => {
     async function checkAuthentication() {
@@ -354,6 +432,10 @@ export default function Home() {
       setActiveView("favorites");
     } else if (view === "audio" && activeView !== "audio") {
       setActiveView("audio");
+    } else if (view === "video" && activeView !== "video") {
+      setActiveView("video");
+    } else if (view === "folders" && activeView !== "folders") {
+      setActiveView("folders");
     } else if (!view && !bookId && activeView !== "library") {
       setActiveView("library");
     }
@@ -405,6 +487,10 @@ export default function Home() {
         router.push("/?view=favorites", undefined, { shallow: true });
       } else if (view === "audio") {
         router.push("/?view=audio", undefined, { shallow: true });
+      } else if (view === "video") {
+        router.push("/?view=video", undefined, { shallow: true });
+      } else if (view === "folders") {
+        router.push("/?view=folders", undefined, { shallow: true });
       } else {
         router.push("/", undefined, { shallow: true });
       }
@@ -497,6 +583,43 @@ export default function Home() {
             onPause={playerControls.pause}
             onClosePlayer={handleClosePlayer}
             trackUpdate={trackUpdate}
+            onTrackEdited={(updatedTrack) => {
+              // Sync the player if the edited track is currently playing
+              if (currentTrack?.id === updatedTrack.id) {
+                setCurrentTrack(updatedTrack);
+                // Also update artwork URL if cover changed
+                if (updatedTrack.coverUrl !== currentTrack.coverUrl) {
+                  if (updatedTrack.coverUrl?.startsWith("audio-covers/")) {
+                    getDownloadUrl(updatedTrack.coverUrl)
+                      .then(({ downloadUrl }) => setArtworkUrl(downloadUrl))
+                      .catch(() => setArtworkUrl(null));
+                  } else {
+                    setArtworkUrl(updatedTrack.coverUrl || null);
+                  }
+                }
+              }
+              // Also update the queue if the track is in it
+              setAudioQueue((prev) =>
+                prev.map((t) => (t.id === updatedTrack.id ? updatedTrack : t))
+              );
+            }}
+          />
+        );
+      case "video":
+        return (
+          <VideoLibraryView
+            onPlayVideo={handlePlayVideo}
+            currentVideoId={currentVideo?.id}
+            isPlaying={!!currentVideo}
+            onPause={handleCloseVideoPlayer}
+          />
+        );
+      case "folders":
+        return (
+          <MediaFoldersView
+            onReadBook={handleReadBook}
+            onPlayTrack={handlePlayTrack}
+            onPlayVideo={handlePlayVideo}
           />
         );
       default:
@@ -528,7 +651,11 @@ export default function Home() {
                     ? "Favorites | Bookish"
                     : activeView === "audio"
                       ? "Audio | Bookish"
-                      : "Bookish - Personal Book Reader"}
+                      : activeView === "video"
+                        ? "Videos | Bookish"
+                        : activeView === "folders"
+                          ? "Folders | Bookish"
+                          : "Bookish - Personal Book Reader"}
         </title>
       </Head>
       <div className="flex flex-col lg:flex-row h-dvh overflow-hidden bg-background">
@@ -614,6 +741,18 @@ export default function Home() {
                   ? { current: queueIndex + 1, total: audioQueue.length }
                   : undefined
               }
+            />
+          )}
+
+          {/* Video player */}
+          {currentVideo && videoStreamUrl && (
+            <VideoPlayer
+              track={currentVideo}
+              streamUrl={videoStreamUrl}
+              onClose={handleCloseVideoPlayer}
+              onTimeUpdate={handleVideoTimeUpdate}
+              onEnded={handleVideoEnded}
+              onDurationChange={handleVideoDurationChange}
             />
           )}
         </div>

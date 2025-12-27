@@ -81,7 +81,11 @@ export function AudioGrid({
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
-                isPlaying && isCurrentTrack ? onPause() : onPlay(track);
+                if (isPlaying && isCurrentTrack) {
+                  onPause();
+                } else {
+                  onPlay(track);
+                }
               }
             }}
           >

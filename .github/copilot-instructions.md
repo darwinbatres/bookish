@@ -9,6 +9,12 @@
 
 This is a personal book and audio reader application built with Next.js 16 using the **Pages Router** pattern. The app allows users to upload, manage, and read PDF and EPUB books, as well as listen to audiobooks and podcasts, with features like bookmarks, notes, reading/listening time tracking, favorites, wishlists, collections, custom covers, and completion celebrations.
 
+**Media Types Supported:**
+- **Books**: PDF and EPUB formats with reading progress tracking
+- **Audio**: MP3, M4A, WAV, OGG, FLAC, AAC, WEBM formats with playback controls
+- **Video**: MP4, WEBM, MKV, MOV, AVI, M4V formats with playback controls
+- **Media Folders**: Organize any combination of books, audio, and video into folders
+
 ## Tech Stack
 
 - **Framework**: Next.js 16.x (Pages Router, NOT App Router)
@@ -53,6 +59,9 @@ src/
 │   │   ├── migrations/      # Incremental migrations for existing DBs
 │   │   │   ├── 002-favorites-wishlist.sql
 │   │   │   └── 003-additional-indexes.sql
+│   │   │   └── 004-audio-support.sql
+│   │   │   └── 005-video-support.sql
+│   │   │   └── 006-media-folders.sql
 │   │   ├── repositories/    # CRUD operations
 │   │   │   ├── books.ts
 │   │   │   ├── bookmarks.ts
@@ -65,8 +74,12 @@ src/
 │   │   │   ├── playlists.ts       # Playlist management
 │   │   │   ├── playlist-items.ts  # Playlist track ordering
 │   │   │   ├── audio-bookmarks.ts # Timestamp bookmarks
-│   │   │   └── listening-sessions.ts # Audio session tracking
-│   │   │   └── stats.ts
+│   │   │   ├── listening-sessions.ts # Audio session tracking
+│   │   │   ├── video-tracks.ts    # Video track CRUD
+│   │   │   ├── video-bookmarks.ts # Video timestamp bookmarks
+│   │   │   ├── video-sessions.ts  # Video watching sessions
+│   │   │   ├── media-folders.ts   # Media folder management
+│   │   │   └── stats.ts           # Storage and library statistics
 │   │   └── index.ts         # Barrel export
 │   ├── auth.ts      # JWT session management
 │   ├── config.ts    # Centralized config with Zod validation
@@ -92,6 +105,8 @@ src/
 └── types/           # TypeScript type definitions
     ├── book.ts      # Book types (DBBook, DBBookmark, DBNote, DBCollection, DBWishlistItem, etc.)
     ├── audio.ts     # Audio types (DBAudioTrack, DBPlaylist, etc.)
+    ├── video.ts     # Video types (DBVideoTrack, DBVideoBookmark, DBVideoSession)
+    ├── media-folder.ts # Media folder types (DBMediaFolder, DBMediaFolderItem, DBMediaFolderItemWithDetails)
     └── index.ts     # Barrel export
 ```
 
@@ -232,6 +247,36 @@ Located in `src/pages/api/`:
 - `DELETE /api/playlists/:id/items` - Remove track from playlist
 - `PATCH /api/playlists/:id/items` - Reorder playlist items
 
+### Video Tracks
+
+- `GET /api/video` - List video tracks (supports pagination, search, sorting)
+- `POST /api/video` - Create video track record
+- `POST /api/video/upload` - Upload video file (proxied to S3)
+- `POST /api/video/cover-upload` - Upload video cover/thumbnail (proxied to S3)
+- `GET /api/video/stream` - Stream video with Range support (seeking)
+- `GET /api/video/download` - Download video file with proper filename
+- `GET /api/video/:id` - Get a single video track
+- `PATCH /api/video/:id` - Update video (title, description, position, duration, coverUrl, favorite)
+- `DELETE /api/video/:id` - Delete video (and S3 file)
+- `GET /api/video/:id/bookmarks` - Get timestamp bookmarks
+- `POST /api/video/:id/bookmarks` - Add timestamp bookmark
+- `DELETE /api/video/:id/bookmarks` - Remove bookmark
+- `GET /api/video/:id/sessions` - Get active watching session
+- `POST /api/video/:id/sessions` - Start watching session
+- `PATCH /api/video/:id/sessions` - End watching session
+
+### Media Folders
+
+- `GET /api/media-folders` - List all media folders
+- `POST /api/media-folders` - Create a media folder
+- `GET /api/media-folders/:id` - Get a media folder
+- `PATCH /api/media-folders/:id` - Update a media folder (name, description, color, icon)
+- `DELETE /api/media-folders/:id` - Delete a media folder
+- `GET /api/media-folders/:id/items` - Get items in a folder (with details)
+- `POST /api/media-folders/:id/items` - Add item to folder (book, audio, or video)
+- `DELETE /api/media-folders/:id/items` - Remove item from folder
+- `PATCH /api/media-folders/:id/items` - Update item (notes, sortOrder)
+
 ### API Pattern
 
 ```typescript
@@ -275,6 +320,12 @@ export default async function handler(
 - `AudioUpload` - Audio file upload component
 - `AudioEditModal` - Modal for editing audio track details
 - `MiniPlayer` - Persistent bottom audio player bar
+- `VideoLibraryView` - Video track management list
+- `VideoTrackCard` - Individual video display card
+- `VideoUpload` - Video file upload component
+- `VideoEditModal` - Modal for editing video track details
+- `VideoCover` - Video thumbnail/cover display
+- `MediaFoldersView` - Media folder management with folder contents, pagination, filtering, markdown notes, and playable items
 
 ## S3 Integration
 

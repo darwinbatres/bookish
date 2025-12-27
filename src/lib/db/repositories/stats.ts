@@ -29,6 +29,25 @@ export interface StorageStats {
     totalStorageBytes: number;
     tracksByFormat: { format: string; count: number; bytes: number }[];
   };
+  // Video stats (December 2024)
+  videoStats: {
+    totalVideos: number;
+    totalFavorites: number;
+    completedVideos: number;
+    totalWatchingTime: number; // seconds
+    totalWatchingSessions: number;
+    totalVideoBookmarks: number;
+    totalStorageBytes: number;
+    videosByFormat: { format: string; count: number; bytes: number }[];
+  };
+  // Media folders stats (December 2024)
+  mediaFoldersStats: {
+    totalFolders: number;
+    totalItems: number;
+    bookItems: number;
+    audioItems: number;
+    videoItems: number;
+  };
   recentActivity: {
     booksAddedLast7Days: number;
     booksAddedLast30Days: number;
@@ -42,6 +61,10 @@ export interface StorageStats {
     collectionsAddedLast30Days: number;
     audioTracksAddedLast7Days: number;
     audioTracksAddedLast30Days: number;
+    videosAddedLast7Days: number;
+    videosAddedLast30Days: number;
+    foldersAddedLast7Days: number;
+    foldersAddedLast30Days: number;
   };
 }
 
@@ -80,6 +103,20 @@ export async function getStorageStats(): Promise<StorageStats> {
     audioSizeResult,
     audioFormatResult,
     recentAudioResult,
+    // Video queries (December 2024)
+    videoTracksResult,
+    videoFavoritesResult,
+    completedVideoResult,
+    watchingTimeResult,
+    watchingSessResult,
+    videoBookmarksResult,
+    videoSizeResult,
+    videoFormatResult,
+    recentVideoResult,
+    // Media folders queries (December 2024)
+    mediaFoldersResult,
+    folderItemsResult,
+    recentFoldersResult,
   ] = await Promise.all([
     // Total books
     pool.query<{ count: string }>("SELECT COUNT(*) as count FROM books"),
@@ -242,6 +279,102 @@ export async function getStorageStats(): Promise<StorageStats> {
         COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '30 days') as last30
        FROM audio_tracks`
     ),
+
+    // Video queries (December 2024)
+    // Video: Total videos
+    pool
+      .query<{ count: string }>("SELECT COUNT(*) as count FROM video_tracks")
+      .catch(() => ({ rows: [{ count: "0" }] })),
+
+    // Video: Total favorites
+    pool
+      .query<{
+        count: string;
+      }>("SELECT COUNT(*) as count FROM video_tracks WHERE is_favorite = true")
+      .catch(() => ({ rows: [{ count: "0" }] })),
+
+    // Video: Completed videos
+    pool
+      .query<{
+        count: string;
+      }>("SELECT COUNT(*) as count FROM video_tracks WHERE completed_at IS NOT NULL")
+      .catch(() => ({ rows: [{ count: "0" }] })),
+
+    // Video: Total watching time
+    pool
+      .query<{
+        total: string;
+      }>("SELECT COALESCE(SUM(total_watching_time), 0) as total FROM video_tracks")
+      .catch(() => ({ rows: [{ total: "0" }] })),
+
+    // Video: Total watching sessions
+    pool
+      .query<{ count: string }>("SELECT COUNT(*) as count FROM video_sessions")
+      .catch(() => ({ rows: [{ count: "0" }] })),
+
+    // Video: Total bookmarks
+    pool
+      .query<{ count: string }>("SELECT COUNT(*) as count FROM video_bookmarks")
+      .catch(() => ({ rows: [{ count: "0" }] })),
+
+    // Video: Total storage size
+    pool
+      .query<{
+        total: string;
+      }>("SELECT COALESCE(SUM(file_size), 0) as total FROM video_tracks")
+      .catch(() => ({ rows: [{ total: "0" }] })),
+
+    // Video: Videos by format
+    pool
+      .query<{ format: string; count: string; bytes: string }>(
+        `SELECT format, 
+              COUNT(*) as count, 
+              COALESCE(SUM(file_size), 0) as bytes 
+       FROM video_tracks 
+       GROUP BY format 
+       ORDER BY count DESC`
+      )
+      .catch(() => ({ rows: [] })),
+
+    // Recent video activity
+    pool
+      .query<{ last7: string; last30: string }>(
+        `SELECT 
+        COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days') as last7,
+        COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '30 days') as last30
+       FROM video_tracks`
+      )
+      .catch(() => ({ rows: [{ last7: "0", last30: "0" }] })),
+
+    // Media folders queries (December 2024)
+    // Total folders
+    pool
+      .query<{ count: string }>("SELECT COUNT(*) as count FROM media_folders")
+      .catch(() => ({ rows: [{ count: "0" }] })),
+
+    // Folder items breakdown
+    pool
+      .query<{ total: string; books: string; audio: string; video: string }>(
+        `SELECT 
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE item_type = 'book') as books,
+        COUNT(*) FILTER (WHERE item_type = 'audio') as audio,
+        COUNT(*) FILTER (WHERE item_type = 'video') as video
+       FROM media_folder_items`
+      )
+      .catch(() => ({
+        rows: [{ total: "0", books: "0", audio: "0", video: "0" }],
+      })),
+
+    // Recent folders activity
+    pool
+      .query<{ last7: string; last30: string }>(
+        `SELECT 
+        COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days') as last7,
+        COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '30 days') as last30
+       FROM media_folders`
+      )
+      .catch(() => ({ rows: [{ last7: "0", last30: "0" }] })),
   ]);
 
   return {
@@ -301,6 +434,22 @@ export async function getStorageStats(): Promise<StorageStats> {
         recentAudioResult.rows[0]?.last30 || "0",
         10
       ),
+      videosAddedLast7Days: parseInt(
+        recentVideoResult.rows[0]?.last7 || "0",
+        10
+      ),
+      videosAddedLast30Days: parseInt(
+        recentVideoResult.rows[0]?.last30 || "0",
+        10
+      ),
+      foldersAddedLast7Days: parseInt(
+        recentFoldersResult.rows[0]?.last7 || "0",
+        10
+      ),
+      foldersAddedLast30Days: parseInt(
+        recentFoldersResult.rows[0]?.last30 || "0",
+        10
+      ),
     },
     audioStats: {
       totalTracks: parseInt(audioTracksResult.rows[0]?.count || "0", 10),
@@ -325,6 +474,35 @@ export async function getStorageStats(): Promise<StorageStats> {
         count: parseInt(row.count, 10),
         bytes: parseInt(row.bytes, 10),
       })),
+    },
+    // Video stats (December 2024)
+    videoStats: {
+      totalVideos: parseInt(videoTracksResult.rows[0]?.count || "0", 10),
+      totalFavorites: parseInt(videoFavoritesResult.rows[0]?.count || "0", 10),
+      completedVideos: parseInt(completedVideoResult.rows[0]?.count || "0", 10),
+      totalWatchingTime: parseInt(watchingTimeResult.rows[0]?.total || "0", 10),
+      totalWatchingSessions: parseInt(
+        watchingSessResult.rows[0]?.count || "0",
+        10
+      ),
+      totalVideoBookmarks: parseInt(
+        videoBookmarksResult.rows[0]?.count || "0",
+        10
+      ),
+      totalStorageBytes: parseInt(videoSizeResult.rows[0]?.total || "0", 10),
+      videosByFormat: (videoFormatResult.rows || []).map((row) => ({
+        format: row.format,
+        count: parseInt(row.count, 10),
+        bytes: parseInt(row.bytes, 10),
+      })),
+    },
+    // Media folders stats (December 2024)
+    mediaFoldersStats: {
+      totalFolders: parseInt(mediaFoldersResult.rows[0]?.count || "0", 10),
+      totalItems: parseInt(folderItemsResult.rows[0]?.total || "0", 10),
+      bookItems: parseInt(folderItemsResult.rows[0]?.books || "0", 10),
+      audioItems: parseInt(folderItemsResult.rows[0]?.audio || "0", 10),
+      videoItems: parseInt(folderItemsResult.rows[0]?.video || "0", 10),
     },
   };
 }
