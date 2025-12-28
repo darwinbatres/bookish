@@ -84,6 +84,8 @@ export interface DBMediaFolderItemWithDetails extends DBMediaFolderItem {
   itemS3Key?: string;
   /** Number of bookmarks (for audio/video) */
   itemBookmarksCount?: number;
+  /** Folder name (when searching across all folders) */
+  folderName?: string;
 }
 
 /**

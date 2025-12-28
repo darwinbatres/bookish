@@ -1436,6 +1436,7 @@ export interface FetchMediaFolderItemsParams {
   page?: number;
   limit?: number;
   itemType?: "book" | "audio" | "video";
+  search?: string;
 }
 
 export async function fetchMediaFolderItemsPaginated(
@@ -1447,9 +1448,34 @@ export async function fetchMediaFolderItemsPaginated(
   if (params.page) searchParams.set("page", params.page.toString());
   if (params.limit) searchParams.set("limit", params.limit.toString());
   if (params.itemType) searchParams.set("itemType", params.itemType);
+  if (params.search) searchParams.set("search", params.search);
 
   const response = await fetch(
     `${API_BASE}/media-folders/${folderId}/items?${searchParams}`
+  );
+  return handleResponse<PaginatedResponse<DBMediaFolderItemWithDetails>>(
+    response
+  );
+}
+
+export interface SearchFolderItemsParams {
+  search: string;
+  page?: number;
+  limit?: number;
+  itemType?: "book" | "audio" | "video";
+}
+
+export async function searchFolderItemsGlobally(
+  params: SearchFolderItemsParams
+): Promise<PaginatedResponse<DBMediaFolderItemWithDetails>> {
+  const searchParams = new URLSearchParams();
+  searchParams.set("search", params.search);
+  if (params.page) searchParams.set("page", params.page.toString());
+  if (params.limit) searchParams.set("limit", params.limit.toString());
+  if (params.itemType) searchParams.set("itemType", params.itemType);
+
+  const response = await fetch(
+    `${API_BASE}/media-folders/search-items?${searchParams}`
   );
   return handleResponse<PaginatedResponse<DBMediaFolderItemWithDetails>>(
     response

@@ -1,6 +1,6 @@
-# 📚 Bookish - Personal Book Reader
+# 📚 Bookish - Personal Media Library
 
-A minimalist, privacy-focused personal book and audio reader. Upload and read PDFs and EPUBs, listen to audiobooks and podcasts, with bookmarks, notes, reading/listening time tracking, favorites, wishlists, collections, and custom covers—all stored securely with PostgreSQL and S3-compatible storage.
+A minimalist, privacy-focused personal library for books, audiobooks, and videos. Upload and read PDFs and EPUBs, listen to audiobooks and podcasts, watch videos—all with bookmarks, notes, progress tracking, favorites, and smart organization. Your files stay secure with PostgreSQL and S3-compatible storage.
 
 ## ✨ Features
 
@@ -14,30 +14,45 @@ A minimalist, privacy-focused personal book and audio reader. Upload and read PD
 
 ### 🎧 Audio Experience
 
-- **Audio Player** - Listen to audiobooks, podcasts, and audio files (MP3, M4A, WAV, OGG, FLAC)
+- **Audio Player** - Listen to audiobooks, podcasts, and audio files (MP3, M4A, M4B, AAC, OGG, FLAC, WAV, WMA)
 - **Progress Tracking** - Automatic position saving so you never lose your place
+- **🔖 Timestamp Bookmarks** - Mark important moments in your audio
 - **Mini Player** - Persistent bottom bar with playback controls
 - **Media Controls** - Lock screen and media key support on mobile and desktop
 - **🎉 Completion Celebration** - Confetti animation when you finish listening!
 
+### 🎬 Video Experience
+
+- **Video Player** - Watch videos with full playback controls (MP4, WEBM, MKV, MOV, AVI, M4V)
+- **Progress Tracking** - Automatically saves your position
+- **🔖 Timestamp Bookmarks** - Mark and return to important moments
+- **Custom Thumbnails** - Upload cover images for your videos
+- **⏱️ Watch Time** - Track your viewing sessions
+- **🎉 Completion Celebration** - Confetti when you finish watching!
+
 ### 📚 Library Management
 
-- **⭐ Favorites** - Mark your favorite books and audio for quick access
+- **📁 Media Folders** - Organize any combination of books, audio, and videos into folders
+  - Add markdown notes to folders for context
+  - Search across all folders and their contents
+  - Custom folder covers
+- **⭐ Favorites** - Mark your favorite items for quick access across all media types
 - **📋 Wishlist** - Track books you want to read (with priority levels)
 - **📁 Collections** - Organize books into custom groups
-- **🖼️ Book Covers** - Upload custom cover images (JPEG, PNG, WebP, GIF)
-- **✏️ Edit Book Details** - Rename books, update author, change covers
-- **⬇️ Download Books** - Download your books anytime from the library
+- **🖼️ Custom Covers** - Upload cover images for books, audio, and videos
+- **✏️ Edit Details** - Rename items, update metadata, change covers
+- **⬇️ Downloads** - Download any file from your library anytime
 
 ### 📊 Analytics & Settings
 
 - **📊 Stats Dashboard** - Comprehensive library statistics:
-  - Total books, audio tracks, favorites, wishlist items, collections
+  - Total books, audio tracks, videos, favorites, wishlist items, collections, folders
   - Reading progress: completed books, pages read, total reading time, reading sessions
   - Listening progress: completed audio, total listening time, listening sessions
+  - Watching progress: completed videos, total watch time, viewing sessions
   - Storage: S3 file usage, PostgreSQL database size, total storage, format breakdown
-  - Recent activity tracking (books, audio, notes, bookmarks, wishlist, collections)
-- **⚙️ Configurable Settings** - Adjust max upload sizes for books (1MB - 2GB), audio (100MB - 2GB), and covers
+  - Recent activity tracking (books, audio, videos, notes, bookmarks, wishlist, collections)
+- **⚙️ Configurable Settings** - Adjust max upload sizes for books, audio, videos, and covers
 - **🔐 Security Status** - View authentication, rate limiting, and storage configuration
 
 ### 🔐 Security & Infrastructure
@@ -222,9 +237,9 @@ All required environment variables must be set - **no hardcoded defaults for sen
 
 Bookish uses an **API Gateway pattern** for secure file access. Both uploads and downloads are proxied through the app server—S3/MinIO is never exposed to the internet:
 
-- **Uploads**: Files are uploaded to the app server via `/api/books/upload` (books) or `/api/books/cover-upload` (covers). The app server then uploads to S3 internally. This ensures the browser only needs to reach your app, not S3.
+- **Uploads**: Files are uploaded to the app server via media-specific endpoints (`/api/books/upload`, `/api/audio/upload`, `/api/video/upload`). The app server then uploads to S3 internally. This ensures the browser only needs to reach your app, not S3.
 
-- **Downloads/Reading**: Files are streamed through the app server via `/api/books/stream`. The browser never accesses S3 directly.
+- **Downloads/Streaming**: Files are streamed through the app server via `/api/{media-type}/stream`. The browser never accesses S3 directly.
 
 **Benefits:**
 
@@ -240,20 +255,35 @@ Bookish uses an **API Gateway pattern** for secure file access. Both uploads and
 Files are organized in the S3 bucket as follows:
 
 ```plaintext
-bookish-books/
+bookish/
 ├── books/           # Book files (PDF, EPUB)
 │   └── {bookId}/
 │       └── {timestamp}.{ext}
-└── covers/          # Book cover images
-    └── {bookId}/
+├── covers/          # Book cover images
+│   └── {bookId}/
+│       └── {timestamp}.{ext}
+├── audio/           # Audio files (MP3, M4A, etc.)
+│   └── {trackId}/
+│       └── {timestamp}.{ext}
+├── audio-covers/    # Audio cover images
+│   └── {trackId}/
+│       └── {timestamp}.{ext}
+├── video/           # Video files (MP4, WEBM, etc.)
+│   └── {videoId}/
+│       └── {timestamp}.{ext}
+├── video-covers/    # Video thumbnails
+│   └── {videoId}/
+│       └── {timestamp}.{ext}
+└── folder-covers/   # Media folder covers
+    └── {folderId}/
         └── {timestamp}.{ext}
 ```
 
 ### Cover Image Requirements
 
 - **Formats**: JPEG, PNG, WebP, GIF
-- **Max Size**: 5 MB
-- **Storage**: S3 with presigned URLs (same bucket as books)
+- **Max Size**: 5 MB (configurable in Settings)
+- **Storage**: S3 (same bucket as all media files)
 
 ### DigitalOcean Spaces Setup
 
@@ -335,7 +365,7 @@ cloudflared tunnel run --token YOUR_TOKEN bookish
 5. Copy the token (starts with `eyJ...`)
 6. Add public hostname:
    - **Subdomain**: `bookish` (or your choice)
-   - **Domain**: `yourdomain.com`
+   - **Domain**: Your Cloudflare-managed domain
    - **Service**: `http://app:3000` (for Docker) or `http://localhost:3000`
 7. Save and deploy
 
@@ -390,53 +420,63 @@ bookish/
 ├── src/
 │   ├── components/      # React components
 │   │   ├── ui/          # shadcn/ui primitives
-│   │   ├── library/     # Library view components
-│   │   ├── book-cover.tsx      # Cover image component
-│   │   ├── edit-book-modal.tsx # Edit book with cover upload
-│   │   ├── wishlist-view.tsx   # Wishlist management
-│   │   ├── audio-library-view.tsx  # Audio track library
-│   │   ├── audio-track-card.tsx    # Audio track display
-│   │   ├── audio-upload.tsx        # Audio file upload
-│   │   ├── audio-edit-modal.tsx    # Edit audio track details
-│   │   ├── mini-player.tsx         # Persistent audio player bar
-│   │   └── *.tsx        # Other feature components
+│   │   ├── library/     # Book library view components (grid, cards, pagination)
+│   │   ├── audio-library/ # Audio view mode components
+│   │   ├── video-library/ # Video view mode components
+│   │   ├── book-cover.tsx       # Book cover component
+│   │   ├── audio-cover.tsx      # Audio cover component
+│   │   ├── video-cover.tsx      # Video thumbnail component
+│   │   ├── folder-cover.tsx     # Folder cover component
+│   │   ├── library-view.tsx     # Book library
+│   │   ├── audio-library-view.tsx  # Audio library
+│   │   ├── video-library-view.tsx  # Video library
+│   │   ├── video-player.tsx     # Video player component
+│   │   ├── media-folders-view.tsx  # Media folders (books + audio + video)
+│   │   ├── mini-player.tsx      # Persistent audio player bar
+│   │   ├── wishlist-view.tsx    # Wishlist management
+│   │   ├── stats-view.tsx       # Analytics dashboard
+│   │   └── *.tsx                # Other feature components
 │   ├── hooks/           # Custom React hooks
 │   │   ├── use-confetti.ts        # Completion celebration
 │   │   ├── use-reading-tracker.ts # Reading session tracking
-│   │   ├── use-cover-url.ts       # Cover URL resolution
 │   │   ├── use-audio-player.ts    # HTML5 audio player controls
 │   │   ├── use-listening-tracker.ts # Audio session tracking
-│   │   └── use-media-session.ts   # OS media controls (lock screen, media keys)
-│   │   └── use-media-session.ts   # OS media controls (lock screen, media keys)
+│   │   ├── use-media-session.ts   # OS media controls (lock screen, media keys)
+│   │   └── use-cover-url.ts       # Cover URL resolution
 │   ├── lib/             # Utility functions
 │   │   ├── api/         # API client + middleware
 │   │   ├── db/          # PostgreSQL layer
-│   │   │   ├── pool.ts      # Connection pool singleton
-│   │   │   ├── schema.sql   # Database schema
-│   │   │   ├── migrations/  # Incremental migrations
-│   │   │   └── repositories/ # CRUD operations (books, audio, playlists, etc.)
+│   │   │   ├── pool.ts          # Connection pool singleton
+│   │   │   ├── schema.sql       # Database schema
+│   │   │   ├── migrations/      # Incremental migrations
+│   │   │   └── repositories/    # CRUD operations
+│   │   │       ├── books.ts, bookmarks.ts, notes.ts, sessions.ts
+│   │   │       ├── audio-tracks.ts, audio-bookmarks.ts, listening-sessions.ts
+│   │   │       ├── video-tracks.ts, video-bookmarks.ts, video-sessions.ts
+│   │   │       ├── media-folders.ts  # Folder management
+│   │   │       ├── playlists.ts, playlist-items.ts
+│   │   │       └── collections.ts, wishlist.ts, settings.ts, stats.ts
 │   │   ├── auth.ts      # JWT session management
 │   │   ├── config.ts    # Centralized configuration
-│   │   ├── s3.ts        # S3 operations (books, covers, audio)
+│   │   ├── s3.ts        # S3 operations
 │   │   └── utils.ts     # General utilities
 │   ├── pages/           # Next.js pages (Pages Router)
 │   │   ├── api/         # API routes
 │   │   │   ├── auth/    # Authentication endpoints
 │   │   │   ├── books/   # Book endpoints + cover upload
 │   │   │   ├── audio/   # Audio endpoints (upload, stream, download)
-│   │   │   ├── playlists/ # Playlist endpoints
-│   │   │   ├── collections/ # Collection endpoints
-│   │   │   ├── wishlist/    # Wishlist endpoints
-│   │   │   ├── settings.ts
-│   │   │   ├── stats.ts
-│   │   │   └── health.ts
-│   │   ├── _app.tsx     # App wrapper
-│   │   ├── _document.tsx
+│   │   │   ├── video/   # Video endpoints (upload, stream, download)
+│   │   │   ├── media-folders/ # Folder management endpoints
+│   │   │   ├── playlists/     # Playlist endpoints
+│   │   │   ├── collections/   # Collection endpoints
+│   │   │   ├── wishlist/      # Wishlist endpoints
+│   │   │   └── settings.ts, stats.ts, health.ts
 │   │   ├── index.tsx    # Main page (Library)
 │   │   └── login.tsx    # Login page
 │   ├── styles/          # Global styles
 │   └── types/           # TypeScript types
-│       └── book.ts      # Book-related types
+│       ├── book.ts, audio.ts, video.ts, media-folder.ts
+│       └── index.ts
 ├── public/              # Static assets
 ├── .github/             # GitHub configs & Copilot instructions
 ├── docker-compose.yml   # Docker orchestration
@@ -537,80 +577,107 @@ sudo ufw enable
 
 ## 📝 API Routes
 
-| Endpoint                      | Method | Description                                  |
-| ----------------------------- | ------ | -------------------------------------------- |
-| `/api/health`                 | GET    | Health check (DB + S3 status)                |
-| `/api/stats`                  | GET    | Storage & library stats                      |
-| `/api/settings`               | GET    | Get app settings                             |
-| `/api/settings`               | PATCH  | Update app settings                          |
-| **Authentication**            |        |                                              |
-| `/api/auth/login`             | POST   | User login                                   |
-| `/api/auth/logout`            | POST   | User logout                                  |
-| `/api/auth/me`                | GET    | Check authentication                         |
-| **Books**                     |        |                                              |
-| `/api/books`                  | GET    | List books (paginated, filterable)           |
-| `/api/books`                  | POST   | Create a book                                |
-| `/api/books/[id]`             | GET    | Get a book                                   |
-| `/api/books/[id]`             | PATCH  | Update book (title, author, cover, favorite) |
-| `/api/books/[id]`             | DELETE | Delete a book (+ S3 files)                   |
-| `/api/books/upload`           | POST   | Upload book file (proxied to S3)             |
-| `/api/books/cover-upload`     | POST   | Upload cover image (proxied to S3)           |
-| `/api/books/stream`           | GET    | Stream book/cover from S3 (proxy)            |
-| `/api/books/upload-url`       | POST   | Get presigned upload URL (legacy)            |
-| `/api/books/cover-upload-url` | POST   | Get presigned cover upload URL (legacy)      |
-| **Bookmarks**                 |        |                                              |
-| `/api/books/[id]/bookmarks`   | GET    | Get bookmarks for a book                     |
-| `/api/books/[id]/bookmarks`   | POST   | Add a bookmark                               |
-| `/api/books/[id]/bookmarks`   | DELETE | Remove a bookmark                            |
-| **Notes**                     |        |                                              |
-| `/api/books/[id]/notes`       | GET    | Get notes for a book                         |
-| `/api/books/[id]/notes`       | POST   | Create a note                                |
-| `/api/books/[id]/notes`       | PATCH  | Update a note                                |
-| `/api/books/[id]/notes`       | DELETE | Delete a note                                |
-| **Reading Sessions**          |        |                                              |
-| `/api/books/[id]/sessions`    | GET    | Get active reading session                   |
-| `/api/books/[id]/sessions`    | POST   | Start reading session                        |
-| `/api/books/[id]/sessions`    | PATCH  | End reading session                          |
-| **Collections**               |        |                                              |
-| `/api/collections`            | GET    | List all collections                         |
-| `/api/collections`            | POST   | Create a collection                          |
-| `/api/collections/[id]`       | GET    | Get a collection                             |
-| `/api/collections/[id]`       | PATCH  | Update a collection                          |
-| `/api/collections/[id]`       | DELETE | Delete a collection                          |
-| **Wishlist**                  |        |                                              |
-| `/api/wishlist`               | GET    | List wishlist items                          |
-| `/api/wishlist`               | POST   | Add to wishlist                              |
-| `/api/wishlist/[id]`          | GET    | Get wishlist item                            |
-| `/api/wishlist/[id]`          | PATCH  | Update wishlist item                         |
-| `/api/wishlist/[id]`          | DELETE | Remove from wishlist                         |
-| **Audio Tracks**              |        |                                              |
-| `/api/audio`                  | GET    | List audio tracks (paginated, filterable)    |
-| `/api/audio`                  | POST   | Create audio track record                    |
-| `/api/audio/[id]`             | GET    | Get an audio track                           |
-| `/api/audio/[id]`             | PATCH  | Update track (title, artist, album, etc.)    |
-| `/api/audio/[id]`             | DELETE | Delete a track (+ S3 file)                   |
-| `/api/audio/upload`           | POST   | Upload audio file (proxied to S3)            |
-| `/api/audio/stream`           | GET    | Stream audio with Range support (seeking)    |
-| `/api/audio/download`         | GET    | Download audio with proper filename          |
-| `/api/audio/metadata`         | GET    | Get unique albums/artists for autocomplete   |
-| **Audio Bookmarks**           |        |                                              |
-| `/api/audio/[id]/bookmarks`   | GET    | Get timestamp bookmarks for a track          |
-| `/api/audio/[id]/bookmarks`   | POST   | Add a timestamp bookmark                     |
-| `/api/audio/[id]/bookmarks`   | DELETE | Remove a bookmark                            |
-| **Listening Sessions**        |        |                                              |
-| `/api/audio/[id]/sessions`    | GET    | Get active listening session                 |
-| `/api/audio/[id]/sessions`    | POST   | Start listening session                      |
-| `/api/audio/[id]/sessions`    | PATCH  | End listening session                        |
-| **Playlists**                 |        |                                              |
-| `/api/playlists`              | GET    | List all playlists                           |
-| `/api/playlists`              | POST   | Create a playlist                            |
-| `/api/playlists/[id]`         | GET    | Get a playlist                               |
-| `/api/playlists/[id]`         | PATCH  | Update a playlist                            |
-| `/api/playlists/[id]`         | DELETE | Delete a playlist                            |
-| `/api/playlists/[id]/items`   | GET    | Get playlist tracks                          |
-| `/api/playlists/[id]/items`   | POST   | Add track to playlist                        |
-| `/api/playlists/[id]/items`   | DELETE | Remove track from playlist                   |
-| `/api/playlists/[id]/items`   | PATCH  | Reorder playlist tracks                      |
+| Endpoint                          | Method | Description                                  |
+| --------------------------------- | ------ | -------------------------------------------- |
+| `/api/health`                     | GET    | Health check (DB + S3 status)                |
+| `/api/stats`                      | GET    | Storage & library stats                      |
+| `/api/settings`                   | GET    | Get app settings                             |
+| `/api/settings`                   | PATCH  | Update app settings                          |
+| **Authentication**                |        |                                              |
+| `/api/auth/login`                 | POST   | User login                                   |
+| `/api/auth/logout`                | POST   | User logout                                  |
+| `/api/auth/me`                    | GET    | Check authentication                         |
+| **Books**                         |        |                                              |
+| `/api/books`                      | GET    | List books (paginated, filterable)           |
+| `/api/books`                      | POST   | Create a book                                |
+| `/api/books/[id]`                 | GET    | Get a book                                   |
+| `/api/books/[id]`                 | PATCH  | Update book (title, author, cover, favorite) |
+| `/api/books/[id]`                 | DELETE | Delete a book (+ S3 files)                   |
+| `/api/books/upload`               | POST   | Upload book file (proxied to S3)             |
+| `/api/books/cover-upload`         | POST   | Upload cover image (proxied to S3)           |
+| `/api/books/stream`               | GET    | Stream book/cover from S3 (proxy)            |
+| `/api/books/upload-url`           | POST   | Get presigned upload URL (legacy)            |
+| `/api/books/cover-upload-url`     | POST   | Get presigned cover upload URL (legacy)      |
+| **Bookmarks**                     |        |                                              |
+| `/api/books/[id]/bookmarks`       | GET    | Get bookmarks for a book                     |
+| `/api/books/[id]/bookmarks`       | POST   | Add a bookmark                               |
+| `/api/books/[id]/bookmarks`       | DELETE | Remove a bookmark                            |
+| **Notes**                         |        |                                              |
+| `/api/books/[id]/notes`           | GET    | Get notes for a book                         |
+| `/api/books/[id]/notes`           | POST   | Create a note                                |
+| `/api/books/[id]/notes`           | PATCH  | Update a note                                |
+| `/api/books/[id]/notes`           | DELETE | Delete a note                                |
+| **Reading Sessions**              |        |                                              |
+| `/api/books/[id]/sessions`        | GET    | Get active reading session                   |
+| `/api/books/[id]/sessions`        | POST   | Start reading session                        |
+| `/api/books/[id]/sessions`        | PATCH  | End reading session                          |
+| **Collections**                   |        |                                              |
+| `/api/collections`                | GET    | List all collections                         |
+| `/api/collections`                | POST   | Create a collection                          |
+| `/api/collections/[id]`           | GET    | Get a collection                             |
+| `/api/collections/[id]`           | PATCH  | Update a collection                          |
+| `/api/collections/[id]`           | DELETE | Delete a collection                          |
+| **Wishlist**                      |        |                                              |
+| `/api/wishlist`                   | GET    | List wishlist items                          |
+| `/api/wishlist`                   | POST   | Add to wishlist                              |
+| `/api/wishlist/[id]`              | GET    | Get wishlist item                            |
+| `/api/wishlist/[id]`              | PATCH  | Update wishlist item                         |
+| `/api/wishlist/[id]`              | DELETE | Remove from wishlist                         |
+| **Audio Tracks**                  |        |                                              |
+| `/api/audio`                      | GET    | List audio tracks (paginated, filterable)    |
+| `/api/audio`                      | POST   | Create audio track record                    |
+| `/api/audio/[id]`                 | GET    | Get an audio track                           |
+| `/api/audio/[id]`                 | PATCH  | Update track (title, artist, album, etc.)    |
+| `/api/audio/[id]`                 | DELETE | Delete a track (+ S3 file)                   |
+| `/api/audio/upload`               | POST   | Upload audio file (proxied to S3)            |
+| `/api/audio/cover-upload`         | POST   | Upload audio cover image (proxied to S3)     |
+| `/api/audio/stream`               | GET    | Stream audio with Range support (seeking)    |
+| `/api/audio/download`             | GET    | Download audio with proper filename          |
+| `/api/audio/metadata`             | GET    | Get unique albums/artists for autocomplete   |
+| **Audio Bookmarks**               |        |                                              |
+| `/api/audio/[id]/bookmarks`       | GET    | Get timestamp bookmarks for a track          |
+| `/api/audio/[id]/bookmarks`       | POST   | Add a timestamp bookmark                     |
+| `/api/audio/[id]/bookmarks`       | DELETE | Remove a bookmark                            |
+| **Listening Sessions**            |        |                                              |
+| `/api/audio/[id]/sessions`        | GET    | Get active listening session                 |
+| `/api/audio/[id]/sessions`        | POST   | Start listening session                      |
+| `/api/audio/[id]/sessions`        | PATCH  | End listening session                        |
+| **Playlists**                     |        |                                              |
+| `/api/playlists`                  | GET    | List all playlists                           |
+| `/api/playlists`                  | POST   | Create a playlist                            |
+| `/api/playlists/[id]`             | GET    | Get a playlist                               |
+| `/api/playlists/[id]`             | PATCH  | Update a playlist                            |
+| `/api/playlists/[id]`             | DELETE | Delete a playlist                            |
+| `/api/playlists/[id]/items`       | GET    | Get playlist tracks                          |
+| `/api/playlists/[id]/items`       | POST   | Add track to playlist                        |
+| `/api/playlists/[id]/items`       | DELETE | Remove track from playlist                   |
+| `/api/playlists/[id]/items`       | PATCH  | Reorder playlist tracks                      |
+| **Videos**                        |        |                                              |
+| `/api/video`                      | GET    | List videos (paginated, filterable)          |
+| `/api/video`                      | POST   | Create video record                          |
+| `/api/video/[id]`                 | GET    | Get a video                                  |
+| `/api/video/[id]`                 | PATCH  | Update video (title, description, etc.)      |
+| `/api/video/[id]`                 | DELETE | Delete a video (+ S3 file)                   |
+| `/api/video/upload`               | POST   | Upload video file (proxied to S3)            |
+| `/api/video/cover-upload`         | POST   | Upload video thumbnail                       |
+| `/api/video/stream`               | GET    | Stream video with Range support              |
+| `/api/video/download`             | GET    | Download video with proper filename          |
+| `/api/video/[id]/bookmarks`       | GET    | Get timestamp bookmarks                      |
+| `/api/video/[id]/bookmarks`       | POST   | Add a timestamp bookmark                     |
+| `/api/video/[id]/bookmarks`       | DELETE | Remove a bookmark                            |
+| `/api/video/[id]/sessions`        | GET    | Get active viewing session                   |
+| `/api/video/[id]/sessions`        | POST   | Start viewing session                        |
+| `/api/video/[id]/sessions`        | PATCH  | End viewing session                          |
+| **Media Folders**                 |        |                                              |
+| `/api/media-folders`              | GET    | List all folders (paginated, searchable)     |
+| `/api/media-folders`              | POST   | Create a folder                              |
+| `/api/media-folders/[id]`         | GET    | Get a folder                                 |
+| `/api/media-folders/[id]`         | PATCH  | Update folder (name, description, cover)     |
+| `/api/media-folders/[id]`         | DELETE | Delete a folder                              |
+| `/api/media-folders/[id]/items`   | GET    | Get folder contents (paginated, searchable)  |
+| `/api/media-folders/[id]/items`   | POST   | Add item to folder                           |
+| `/api/media-folders/[id]/items`   | DELETE | Remove item from folder                      |
+| `/api/media-folders/search-items` | GET    | Search items across all folders              |
 
 ## 🧪 Development
 
@@ -635,4 +702,4 @@ Contributions are welcome! Please read our contributing guidelines before submit
 
 ---
 
-Built with ❤️ for book lovers who value privacy.
+Built with ❤️ for media lovers who value privacy.

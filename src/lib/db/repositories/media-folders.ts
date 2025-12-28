@@ -53,6 +53,7 @@ interface DBMediaFolderItemRow {
   item_folder_count?: string;
   item_s3_key?: string;
   item_bookmarks_count?: string;
+  folder_name?: string;
 }
 
 // ============================================================================
@@ -111,6 +112,7 @@ function mapDBRowToMediaFolderItemWithDetails(
     itemBookmarksCount: row.item_bookmarks_count
       ? parseInt(row.item_bookmarks_count, 10)
       : undefined,
+    folderName: row.folder_name ?? undefined,
   };
 }
 
@@ -171,7 +173,9 @@ export async function getMediaFoldersWithPagination(
   let paramIndex = 1;
 
   if (search && search.trim()) {
-    whereClauses.push(`mf.name ILIKE $${paramIndex}`);
+    whereClauses.push(
+      `(mf.name ILIKE $${paramIndex} OR COALESCE(mf.description, '') ILIKE $${paramIndex})`
+    );
     queryParams.push(`%${search.trim()}%`);
     paramIndex++;
   }
@@ -351,6 +355,7 @@ interface FolderItemsPaginationParams {
   page?: number;
   limit?: number;
   itemType?: "book" | "audio" | "video";
+  search?: string;
 }
 
 export async function getFolderItems(
@@ -395,9 +400,10 @@ export async function getFolderItemsWithPagination(
   params: FolderItemsPaginationParams = {}
 ): Promise<PaginatedResponse<DBMediaFolderItemWithDetails>> {
   const pool = getPool();
-  const { page = 1, limit = 20, itemType } = params;
+  const { page = 1, limit = 20, itemType, search } = params;
   const offset = (page - 1) * limit;
 
+  // Build WHERE clause - requires JOINs for search
   const whereClauses: string[] = ["mfi.folder_id = $1"];
   const queryParams: (string | number)[] = [folderId];
   let paramIndex = 2;
@@ -408,11 +414,34 @@ export async function getFolderItemsWithPagination(
     paramIndex++;
   }
 
+  // Search across item title, author, format, and folder item notes
+  // Uses ILIKE for case-insensitive search - efficient with trigram indexes
+  if (search && search.trim()) {
+    const searchTerm = `%${search.trim()}%`;
+    whereClauses.push(`(
+      COALESCE(b.title, a.title, v.title) ILIKE $${paramIndex}
+      OR COALESCE(b.author, a.artist, '') ILIKE $${paramIndex}
+      OR COALESCE(b.format, a.format, v.format, '') ILIKE $${paramIndex}
+      OR COALESCE(mfi.notes, '') ILIKE $${paramIndex}
+      OR COALESCE(a.album, '') ILIKE $${paramIndex}
+    )`);
+    queryParams.push(searchTerm);
+    paramIndex++;
+  }
+
   const whereClause = whereClauses.join(" AND ");
 
-  // Count query
+  // Count query - needs JOINs for search filtering
+  const countQuery = `
+    SELECT COUNT(*) as count 
+    FROM media_folder_items mfi
+    LEFT JOIN books b ON mfi.item_type = 'book' AND mfi.item_id = b.id
+    LEFT JOIN audio_tracks a ON mfi.item_type = 'audio' AND mfi.item_id = a.id
+    LEFT JOIN video_tracks v ON mfi.item_type = 'video' AND mfi.item_id = v.id
+    WHERE ${whereClause}
+  `;
   const countResult = await pool.query<{ count: string }>(
-    `SELECT COUNT(*) as count FROM media_folder_items mfi WHERE ${whereClause}`,
+    countQuery,
     queryParams
   );
   const totalItems = parseInt(countResult.rows[0].count, 10);
@@ -609,4 +638,115 @@ export async function removeItemFromAllFolders(
     [itemType, itemId]
   );
   return result.rowCount ?? 0;
+}
+
+/**
+ * Search items across all folders
+ * Returns paginated results with folder name included
+ */
+interface GlobalItemsSearchParams {
+  page?: number;
+  limit?: number;
+  itemType?: "book" | "audio" | "video";
+  search: string; // Required for global search
+}
+
+export async function searchItemsAcrossAllFolders(
+  params: GlobalItemsSearchParams
+): Promise<PaginatedResponse<DBMediaFolderItemWithDetails>> {
+  const pool = getPool();
+  const { page = 1, limit = 20, itemType, search } = params;
+  const offset = (page - 1) * limit;
+
+  // Build WHERE clause
+  const whereClauses: string[] = [];
+  const queryParams: (string | number)[] = [];
+  let paramIndex = 1;
+
+  // Search is required for this function
+  // Also search by folder name/description so items in matching folders appear
+  const searchTerm = `%${search.trim()}%`;
+  whereClauses.push(`(
+    COALESCE(b.title, a.title, v.title) ILIKE $${paramIndex}
+    OR COALESCE(b.author, a.artist, '') ILIKE $${paramIndex}
+    OR COALESCE(b.format, a.format, v.format, '') ILIKE $${paramIndex}
+    OR COALESCE(mfi.notes, '') ILIKE $${paramIndex}
+    OR COALESCE(a.album, '') ILIKE $${paramIndex}
+    OR mf.name ILIKE $${paramIndex}
+    OR COALESCE(mf.description, '') ILIKE $${paramIndex}
+  )`);
+  queryParams.push(searchTerm);
+  paramIndex++;
+
+  if (itemType) {
+    whereClauses.push(`mfi.item_type = $${paramIndex}`);
+    queryParams.push(itemType);
+    paramIndex++;
+  }
+
+  const whereClause = whereClauses.join(" AND ");
+
+  // Count query
+  const countQuery = `
+    SELECT COUNT(*) as count 
+    FROM media_folder_items mfi
+    INNER JOIN media_folders mf ON mfi.folder_id = mf.id
+    LEFT JOIN books b ON mfi.item_type = 'book' AND mfi.item_id = b.id
+    LEFT JOIN audio_tracks a ON mfi.item_type = 'audio' AND mfi.item_id = a.id
+    LEFT JOIN video_tracks v ON mfi.item_type = 'video' AND mfi.item_id = v.id
+    WHERE ${whereClause}
+  `;
+  const countResult = await pool.query<{ count: string }>(
+    countQuery,
+    queryParams
+  );
+  const totalItems = parseInt(countResult.rows[0].count, 10);
+
+  // Data query - includes folder name
+  const dataQuery = `
+    SELECT 
+      mfi.*,
+      mf.name as folder_name,
+      COALESCE(b.title, a.title, v.title) as item_title,
+      COALESCE(b.author, a.artist) as item_author,
+      COALESCE(b.cover_url, a.cover_url, v.cover_url) as item_cover_url,
+      COALESCE(a.duration_seconds, v.duration_seconds) as item_duration,
+      COALESCE(b.current_page, a.current_position, v.current_position) as item_progress,
+      COALESCE(b.total_pages, a.duration_seconds, v.duration_seconds) as item_total,
+      COALESCE(b.format, a.format, v.format) as item_format,
+      COALESCE(b.is_favorite, a.is_favorite, v.is_favorite) as item_is_favorite,
+      COALESCE(b.s3_key, a.s3_key, v.s3_key) as item_s3_key,
+      (SELECT COUNT(*) FROM media_folder_items mfi2 WHERE mfi2.item_id = mfi.item_id AND mfi2.item_type = mfi.item_type)::text as item_folder_count,
+      (CASE 
+        WHEN mfi.item_type = 'audio' THEN (SELECT COUNT(*) FROM audio_bookmarks ab WHERE ab.track_id = mfi.item_id)
+        WHEN mfi.item_type = 'video' THEN (SELECT COUNT(*) FROM video_bookmarks vb WHERE vb.video_id = mfi.item_id)
+        ELSE 0
+      END)::text as item_bookmarks_count
+    FROM media_folder_items mfi
+    INNER JOIN media_folders mf ON mfi.folder_id = mf.id
+    LEFT JOIN books b ON mfi.item_type = 'book' AND mfi.item_id = b.id
+    LEFT JOIN audio_tracks a ON mfi.item_type = 'audio' AND mfi.item_id = a.id
+    LEFT JOIN video_tracks v ON mfi.item_type = 'video' AND mfi.item_id = v.id
+    WHERE ${whereClause}
+    ORDER BY COALESCE(b.title, a.title, v.title)
+    LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
+  `;
+
+  const result = await pool.query<DBMediaFolderItemRow>(dataQuery, [
+    ...queryParams,
+    limit,
+    offset,
+  ]);
+
+  const totalPages = Math.ceil(totalItems / limit);
+  return {
+    data: result.rows.map(mapDBRowToMediaFolderItemWithDetails),
+    pagination: {
+      page,
+      limit,
+      totalItems,
+      totalPages,
+      hasMore: page < totalPages,
+    },
+  };
 }

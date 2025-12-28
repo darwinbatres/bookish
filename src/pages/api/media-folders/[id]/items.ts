@@ -79,10 +79,10 @@ async function handler(
     });
   }
 
-  // GET - Get folder items (supports pagination)
+  // GET - Get folder items (supports pagination and search)
   if (req.method === "GET") {
     try {
-      const { page, limit, itemType, paginate } = req.query;
+      const { page, limit, itemType, paginate, search } = req.query;
 
       // If paginate=true or page/limit provided, return paginated response
       if (paginate === "true" || page || limit) {
@@ -90,6 +90,7 @@ async function handler(
           page: page ? parseInt(page as string, 10) : 1,
           limit: limit ? parseInt(limit as string, 10) : 20,
           itemType: itemType as "book" | "audio" | "video" | undefined,
+          search: typeof search === "string" ? search : undefined,
         });
         return res.status(200).json(paginatedItems);
       }

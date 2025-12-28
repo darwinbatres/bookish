@@ -71,6 +71,7 @@ import {
   toggleBookFavorite,
   toggleAudioFavorite,
   toggleVideoFavorite,
+  searchFolderItemsGlobally,
 } from "@/lib/api/client";
 import { BookCover } from "@/components/book-cover";
 import { AudioCover } from "@/components/audio-cover";
@@ -163,6 +164,18 @@ export function MediaFoldersView({
 
   // Search for folders
   const [search, setSearch] = useState("");
+
+  // Search for items within a folder
+  const [itemsSearch, setItemsSearch] = useState("");
+
+  // Global search results (items across all folders)
+  const [globalSearchResults, setGlobalSearchResults] = useState<
+    DBMediaFolderItemWithDetails[]
+  >([]);
+  const [globalSearchLoading, setGlobalSearchLoading] = useState(false);
+  const [globalSearchPage, setGlobalSearchPage] = useState(1);
+  const [globalSearchTotalPages, setGlobalSearchTotalPages] = useState(1);
+  const [globalSearchTotalCount, setGlobalSearchTotalCount] = useState(0);
 
   // Pagination for folder items
   const [itemsPage, setItemsPage] = useState(1);
@@ -294,6 +307,7 @@ export function MediaFoldersView({
           page: itemsPage,
           limit: itemsLimit,
           itemType: filterType === "all" ? undefined : filterType,
+          search: itemsSearch || undefined,
         });
         setFolderItems(result.data);
         setItemsPage(result.pagination.page);
@@ -306,18 +320,58 @@ export function MediaFoldersView({
         setLoadingItems(false);
       }
     },
-    [itemsPage, itemsLimit, filterType]
+    [itemsPage, itemsLimit, filterType, itemsSearch]
   );
+
+  // Search items across all folders (global search)
+  const searchItemsGlobally = useCallback(async () => {
+    if (!search.trim()) {
+      setGlobalSearchResults([]);
+      setGlobalSearchTotalCount(0);
+      setGlobalSearchTotalPages(1);
+      return;
+    }
+    try {
+      setGlobalSearchLoading(true);
+      const result = await searchFolderItemsGlobally({
+        search: search.trim(),
+        page: globalSearchPage,
+        limit: foldersLimit, // Use same limit as folders
+      });
+      setGlobalSearchResults(result.data);
+      setGlobalSearchPage(result.pagination.page);
+      setGlobalSearchTotalPages(result.pagination.totalPages);
+      setGlobalSearchTotalCount(result.pagination.totalItems);
+    } catch (error) {
+      console.error("Failed to search items:", error);
+      // Don't show toast - silent fail for global search
+    } finally {
+      setGlobalSearchLoading(false);
+    }
+  }, [search, globalSearchPage, foldersLimit]);
 
   // Load folders when dependencies change
   useEffect(() => {
     loadFolders();
   }, [loadFolders]);
 
+  // Search items globally when search changes (only when not in a folder)
+  useEffect(() => {
+    if (!selectedFolder) {
+      searchItemsGlobally();
+    }
+  }, [selectedFolder, searchItemsGlobally]);
+
   // Reset to page 1 when search changes
   useEffect(() => {
     setFoldersPage(1);
+    setGlobalSearchPage(1);
   }, [search]);
+
+  // Reset to page 1 when items search changes
+  useEffect(() => {
+    setItemsPage(1);
+  }, [itemsSearch]);
 
   useEffect(() => {
     if (selectedFolder) {
@@ -675,6 +729,13 @@ export function MediaFoldersView({
     []
   );
 
+  // Handle selecting a folder - clears items search
+  const handleSelectFolder = useCallback((folder: DBMediaFolder | null) => {
+    setItemsSearch("");
+    setItemsPage(1);
+    setSelectedFolder(folder);
+  }, []);
+
   // Handle downloading an item
   const handleDownloadItem = useCallback(
     async (item: DBMediaFolderItemWithDetails) => {
@@ -791,6 +852,151 @@ export function MediaFoldersView({
                   </div>
                 </div>
               </div>
+
+              {/* Global Search Results - Items matching search across all folders */}
+              {search.trim() && (
+                <div className="mb-6 sm:mb-8">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-base font-semibold text-foreground">
+                      Items in Folders
+                      {globalSearchTotalCount > 0 && (
+                        <span className="ml-2 text-sm font-normal text-muted-foreground">
+                          {globalSearchTotalCount} matching "{search}"
+                        </span>
+                      )}
+                    </h3>
+                  </div>
+
+                  {globalSearchLoading ? (
+                    <div className="space-y-2">
+                      {[...Array(3)].map((_, i) => (
+                        <Skeleton key={i} className="h-16 w-full rounded-lg" />
+                      ))}
+                    </div>
+                  ) : globalSearchResults.length === 0 ? (
+                    <p className="text-sm text-muted-foreground py-4 text-center border border-dashed border-border rounded-lg">
+                      No items found matching "{search}" in any folder
+                    </p>
+                  ) : (
+                    <>
+                      <div className="border border-border rounded-xl overflow-hidden divide-y divide-border">
+                        {globalSearchResults.map((item) => (
+                          <div
+                            key={item.id}
+                            className="group flex items-center gap-3 px-3 py-3 transition-colors hover:bg-secondary/30"
+                          >
+                            {/* Item cover */}
+                            <div className="w-10 h-10 rounded shrink-0 overflow-hidden bg-muted flex items-center justify-center">
+                              {item.itemType === "book" && (
+                                <BookCover
+                                  coverUrl={item.itemCoverUrl}
+                                  format={item.itemFormat as BookFormat}
+                                  title={item.itemTitle || "Book"}
+                                  className="w-full h-full"
+                                />
+                              )}
+                              {item.itemType === "audio" && (
+                                <AudioCover
+                                  coverUrl={item.itemCoverUrl}
+                                  title={item.itemTitle || "Audio"}
+                                  className="w-full h-full"
+                                />
+                              )}
+                              {item.itemType === "video" && (
+                                <VideoCover
+                                  coverUrl={item.itemCoverUrl}
+                                  title={item.itemTitle || "Video"}
+                                  className="w-full h-full"
+                                />
+                              )}
+                            </div>
+
+                            {/* Item info */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                {getItemIcon(item.itemType)}
+                                <span className="text-sm font-medium truncate">
+                                  {item.itemTitle || "Untitled"}
+                                </span>
+                                {item.itemIsFavorite && (
+                                  <Star className="w-3 h-3 fill-yellow-400 text-yellow-400 shrink-0" />
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                <span className="truncate">
+                                  {item.folderName && (
+                                    <>
+                                      <Folder className="w-3 h-3 inline mr-1" />
+                                      {item.folderName}
+                                    </>
+                                  )}
+                                </span>
+                                {item.itemAuthor && (
+                                  <>
+                                    <span>•</span>
+                                    <span className="truncate">
+                                      {item.itemAuthor}
+                                    </span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Type badge */}
+                            <span className="text-xs uppercase text-muted-foreground shrink-0">
+                              {item.itemType}
+                            </span>
+
+                            {/* Open Folder button */}
+                            <Button
+                              size="sm"
+                              variant="default"
+                              onClick={() => {
+                                // Find the folder and open it
+                                const folder = folders.find(
+                                  (f) => f.id === item.folderId
+                                );
+                                if (folder) {
+                                  handleSelectFolder(folder);
+                                } else {
+                                  // Folder not in current list, fetch and open
+                                  fetch(`/api/media-folders/${item.folderId}`)
+                                    .then((res) => res.json())
+                                    .then((folder) => {
+                                      if (folder && folder.id) {
+                                        handleSelectFolder(folder);
+                                      }
+                                    })
+                                    .catch(() => {
+                                      toast.error("Failed to open folder");
+                                    });
+                                }
+                              }}
+                              className="h-8 px-3 text-xs font-semibold shrink-0"
+                            >
+                              Open Folder
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Pagination for global search results */}
+                      {globalSearchTotalPages > 1 && (
+                        <div className="mt-4">
+                          <PaginationControls
+                            currentPage={globalSearchPage}
+                            totalPages={globalSearchTotalPages}
+                            onPageChange={setGlobalSearchPage}
+                            limit={foldersLimit}
+                            onLimitChange={handleFoldersLimitChange}
+                            totalItems={globalSearchTotalCount}
+                          />
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
             </>
           ) : (
             /* Folder Detail Header */
@@ -801,7 +1007,7 @@ export function MediaFoldersView({
                   <Button
                     variant="ghost"
                     onClick={() => {
-                      setSelectedFolder(null);
+                      handleSelectFolder(null);
                       setEditingNotes(false);
                     }}
                   >
@@ -813,16 +1019,25 @@ export function MediaFoldersView({
                       {selectedFolder.name}
                     </h3>
                     <p className="text-sm text-muted-foreground">
-                      {selectedFolder.itemCount || 0} items
+                      {itemsTotalCount} item
+                      {itemsTotalCount !== 1 ? "s" : ""}
+                      {itemsSearch && ` matching "${itemsSearch}"`}
                     </p>
                   </div>
                 </div>
 
-                {/* View mode switcher */}
-                <ViewModeSwitcher
-                  currentMode={itemViewMode}
-                  onChange={handleItemsViewModeChange}
-                />
+                {/* Search and view controls */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                  <SearchInput
+                    value={itemsSearch}
+                    onChange={setItemsSearch}
+                    placeholder="Search items..."
+                  />
+                  <ViewModeSwitcher
+                    currentMode={itemViewMode}
+                    onChange={handleItemsViewModeChange}
+                  />
+                </div>
               </div>
 
               {/* Notes Section - Collapsible */}
@@ -1713,26 +1928,28 @@ export function MediaFoldersView({
                   ))}
                 </div>
               ) : folders.length === 0 ? (
-                /* Empty state */
-                <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <div className="p-4 rounded-full bg-orange-500/10 mb-4">
-                    <Folder className="w-12 h-12 text-orange-500" />
+                /* Empty state - hide when items are found */
+                search && globalSearchResults.length > 0 ? null : (
+                  <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <div className="p-4 rounded-full bg-orange-500/10 mb-4">
+                      <Folder className="w-12 h-12 text-orange-500" />
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2">
+                      {search ? "No folders found" : "No folders yet"}
+                    </h3>
+                    <p className="text-muted-foreground text-sm max-w-md mb-6">
+                      {search
+                        ? `No folders match "${search}". Try a different search term.`
+                        : "Create your first folder to organize your books, audio, and videos."}
+                    </p>
+                    {!search && (
+                      <Button onClick={() => setShowCreateModal(true)}>
+                        <FolderPlus className="w-4 h-4 mr-2" />
+                        Create Folder
+                      </Button>
+                    )}
                   </div>
-                  <h3 className="text-lg font-semibold mb-2">
-                    {search ? "No folders found" : "No folders yet"}
-                  </h3>
-                  <p className="text-muted-foreground text-sm max-w-md mb-6">
-                    {search
-                      ? `No folders match "${search}". Try a different search term.`
-                      : "Create your first folder to organize your books, audio, and videos."}
-                  </p>
-                  {!search && (
-                    <Button onClick={() => setShowCreateModal(true)}>
-                      <FolderPlus className="w-4 h-4 mr-2" />
-                      Create Folder
-                    </Button>
-                  )}
-                </div>
+                )
               ) : (
                 <>
                   {/* Folders Grid View */}
@@ -1746,12 +1963,12 @@ export function MediaFoldersView({
                           key={folder.id}
                           role="listitem"
                           className="group flex flex-col bg-card border border-border rounded-xl overflow-hidden hover:border-muted-foreground/30 transition-all cursor-pointer focus-within:ring-2 focus-within:ring-ring"
-                          onClick={() => setSelectedFolder(folder)}
+                          onClick={() => handleSelectFolder(folder)}
                           tabIndex={0}
                           onKeyDown={(e) => {
                             if (e.key === "Enter" || e.key === " ") {
                               e.preventDefault();
-                              setSelectedFolder(folder);
+                              handleSelectFolder(folder);
                             }
                           }}
                         >
@@ -1881,11 +2098,11 @@ export function MediaFoldersView({
                           className={cn(
                             "group flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl bg-card border border-border hover:border-muted-foreground/30 active:bg-secondary/30 transition-all cursor-pointer focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
                           )}
-                          onClick={() => setSelectedFolder(folder)}
+                          onClick={() => handleSelectFolder(folder)}
                           onKeyDown={(e) => {
                             if (e.key === "Enter" || e.key === " ") {
                               e.preventDefault();
-                              setSelectedFolder(folder);
+                              handleSelectFolder(folder);
                             }
                           }}
                           tabIndex={0}
@@ -1981,7 +2198,7 @@ export function MediaFoldersView({
                               variant="default"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setSelectedFolder(folder);
+                                handleSelectFolder(folder);
                               }}
                               className="h-9 sm:h-8 px-4 sm:px-3 text-xs font-semibold"
                             >
@@ -2040,12 +2257,12 @@ export function MediaFoldersView({
                           className={cn(
                             "group flex bg-card border border-border rounded-xl overflow-hidden hover:border-muted-foreground/30 transition-all cursor-pointer focus-within:ring-2 focus-within:ring-ring"
                           )}
-                          onClick={() => setSelectedFolder(folder)}
+                          onClick={() => handleSelectFolder(folder)}
                           tabIndex={0}
                           onKeyDown={(e) => {
                             if (e.key === "Enter" || e.key === " ") {
                               e.preventDefault();
-                              setSelectedFolder(folder);
+                              handleSelectFolder(folder);
                             }
                           }}
                         >
@@ -2155,12 +2372,12 @@ export function MediaFoldersView({
                             "group flex items-center gap-3 px-3 py-3 transition-colors cursor-pointer",
                             "hover:bg-secondary/30"
                           )}
-                          onClick={() => setSelectedFolder(folder)}
+                          onClick={() => handleSelectFolder(folder)}
                           tabIndex={0}
                           onKeyDown={(e) => {
                             if (e.key === "Enter" || e.key === " ") {
                               e.preventDefault();
-                              setSelectedFolder(folder);
+                              handleSelectFolder(folder);
                             }
                           }}
                         >
