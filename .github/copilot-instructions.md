@@ -10,6 +10,7 @@
 This is a personal book and audio reader application built with Next.js 16 using the **Pages Router** pattern. The app allows users to upload, manage, and read PDF and EPUB books, as well as listen to audiobooks and podcasts, with features like bookmarks, notes, reading/listening time tracking, favorites, wishlists, collections, custom covers, and completion celebrations.
 
 **Media Types Supported:**
+
 - **Books**: PDF and EPUB formats with reading progress tracking
 - **Audio**: MP3, M4A, WAV, OGG, FLAC, AAC, WEBM formats with playback controls
 - **Video**: MP4, WEBM, MKV, MOV, AVI, M4V formats with playback controls
@@ -62,13 +63,14 @@ src/
 │   │   │   └── 004-audio-support.sql
 │   │   │   └── 005-video-support.sql
 │   │   │   └── 006-media-folders.sql
+│   │   │   └── 007-wishlist-media-type.sql
 │   │   ├── repositories/    # CRUD operations
 │   │   │   ├── books.ts
 │   │   │   ├── bookmarks.ts
 │   │   │   ├── notes.ts
 │   │   │   ├── sessions.ts  # Reading sessions
 │   │   │   ├── collections.ts
-│   │   │   ├── wishlist.ts  # Wishlist items
+│   │   │   ├── wishlist.ts  # Wishlist items (with multi-media support)
 │   │   │   ├── settings.ts  # App settings
 │   │   │   ├── audio-tracks.ts    # Audio track CRUD
 │   │   │   ├── playlists.ts       # Playlist management
@@ -210,8 +212,9 @@ Located in `src/pages/api/`:
 
 ### Wishlist
 
-- `GET /api/wishlist` - List all wishlist items
-- `POST /api/wishlist` - Add item to wishlist
+- `GET /api/wishlist` - List all wishlist items (supports pagination, search, mediaType filter)
+- `POST /api/wishlist` - Add item to wishlist (supports book/audio/video types)
+- `GET /api/wishlist/check-duplicates` - Search for duplicate titles in library
 - `GET /api/wishlist/:id` - Get a wishlist item
 - `PATCH /api/wishlist/:id` - Update a wishlist item
 - `DELETE /api/wishlist/:id` - Remove from wishlist
@@ -278,6 +281,7 @@ Located in `src/pages/api/`:
 - `PATCH /api/media-folders/:id/items` - Update item (notes, sortOrder)
 
 **Cascading Behavior:**
+
 - Deleting a **folder** removes the folder and its item references, but keeps the actual files in the library
 - Deleting a **book/audio/video** from the library automatically removes it from all folders
 - Stats are always accurate (calculated dynamically from database, not cached)
@@ -311,7 +315,7 @@ export default async function handler(
 - `StatsView` - Storage and library analytics dashboard
 - `SettingsView` - Application settings management
 - `CollectionsView` - Manage book collections
-- `WishlistView` - Manage wishlist items (books you want)
+- `WishlistView` - Manage wishlist items (books, audio, video with duplicate detection)
 - `EditBookModal` - Modal for editing book details and favorites
 - `ReaderView` - Reading interface (supports PDF and EPUB)
 - `PdfReader` - PDF rendering with react-pdf

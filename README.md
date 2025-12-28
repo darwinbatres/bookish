@@ -37,7 +37,7 @@ A minimalist, privacy-focused personal library for books, audiobooks, and videos
   - Search across all folders and their contents
   - Custom folder covers
 - **⭐ Favorites** - Mark your favorite items for quick access across all media types
-- **📋 Wishlist** - Track books you want to read (with priority levels)
+- **📋 Wishlist** - Track media you want to acquire (books, audio, video with priority levels and duplicate detection)
 - **📁 Collections** - Organize books into custom groups
 - **🖼️ Custom Covers** - Upload cover images for books, audio, and videos
 - **✏️ Edit Details** - Rename items, update metadata, change covers
@@ -577,107 +577,108 @@ sudo ufw enable
 
 ## 📝 API Routes
 
-| Endpoint                          | Method | Description                                  |
-| --------------------------------- | ------ | -------------------------------------------- |
-| `/api/health`                     | GET    | Health check (DB + S3 status)                |
-| `/api/stats`                      | GET    | Storage & library stats                      |
-| `/api/settings`                   | GET    | Get app settings                             |
-| `/api/settings`                   | PATCH  | Update app settings                          |
-| **Authentication**                |        |                                              |
-| `/api/auth/login`                 | POST   | User login                                   |
-| `/api/auth/logout`                | POST   | User logout                                  |
-| `/api/auth/me`                    | GET    | Check authentication                         |
-| **Books**                         |        |                                              |
-| `/api/books`                      | GET    | List books (paginated, filterable)           |
-| `/api/books`                      | POST   | Create a book                                |
-| `/api/books/[id]`                 | GET    | Get a book                                   |
-| `/api/books/[id]`                 | PATCH  | Update book (title, author, cover, favorite) |
-| `/api/books/[id]`                 | DELETE | Delete a book (+ S3 files)                   |
-| `/api/books/upload`               | POST   | Upload book file (proxied to S3)             |
-| `/api/books/cover-upload`         | POST   | Upload cover image (proxied to S3)           |
-| `/api/books/stream`               | GET    | Stream book/cover from S3 (proxy)            |
-| `/api/books/upload-url`           | POST   | Get presigned upload URL (legacy)            |
-| `/api/books/cover-upload-url`     | POST   | Get presigned cover upload URL (legacy)      |
-| **Bookmarks**                     |        |                                              |
-| `/api/books/[id]/bookmarks`       | GET    | Get bookmarks for a book                     |
-| `/api/books/[id]/bookmarks`       | POST   | Add a bookmark                               |
-| `/api/books/[id]/bookmarks`       | DELETE | Remove a bookmark                            |
-| **Notes**                         |        |                                              |
-| `/api/books/[id]/notes`           | GET    | Get notes for a book                         |
-| `/api/books/[id]/notes`           | POST   | Create a note                                |
-| `/api/books/[id]/notes`           | PATCH  | Update a note                                |
-| `/api/books/[id]/notes`           | DELETE | Delete a note                                |
-| **Reading Sessions**              |        |                                              |
-| `/api/books/[id]/sessions`        | GET    | Get active reading session                   |
-| `/api/books/[id]/sessions`        | POST   | Start reading session                        |
-| `/api/books/[id]/sessions`        | PATCH  | End reading session                          |
-| **Collections**                   |        |                                              |
-| `/api/collections`                | GET    | List all collections                         |
-| `/api/collections`                | POST   | Create a collection                          |
-| `/api/collections/[id]`           | GET    | Get a collection                             |
-| `/api/collections/[id]`           | PATCH  | Update a collection                          |
-| `/api/collections/[id]`           | DELETE | Delete a collection                          |
-| **Wishlist**                      |        |                                              |
-| `/api/wishlist`                   | GET    | List wishlist items                          |
-| `/api/wishlist`                   | POST   | Add to wishlist                              |
-| `/api/wishlist/[id]`              | GET    | Get wishlist item                            |
-| `/api/wishlist/[id]`              | PATCH  | Update wishlist item                         |
-| `/api/wishlist/[id]`              | DELETE | Remove from wishlist                         |
-| **Audio Tracks**                  |        |                                              |
-| `/api/audio`                      | GET    | List audio tracks (paginated, filterable)    |
-| `/api/audio`                      | POST   | Create audio track record                    |
-| `/api/audio/[id]`                 | GET    | Get an audio track                           |
-| `/api/audio/[id]`                 | PATCH  | Update track (title, artist, album, etc.)    |
-| `/api/audio/[id]`                 | DELETE | Delete a track (+ S3 file)                   |
-| `/api/audio/upload`               | POST   | Upload audio file (proxied to S3)            |
-| `/api/audio/cover-upload`         | POST   | Upload audio cover image (proxied to S3)     |
-| `/api/audio/stream`               | GET    | Stream audio with Range support (seeking)    |
-| `/api/audio/download`             | GET    | Download audio with proper filename          |
-| `/api/audio/metadata`             | GET    | Get unique albums/artists for autocomplete   |
-| **Audio Bookmarks**               |        |                                              |
-| `/api/audio/[id]/bookmarks`       | GET    | Get timestamp bookmarks for a track          |
-| `/api/audio/[id]/bookmarks`       | POST   | Add a timestamp bookmark                     |
-| `/api/audio/[id]/bookmarks`       | DELETE | Remove a bookmark                            |
-| **Listening Sessions**            |        |                                              |
-| `/api/audio/[id]/sessions`        | GET    | Get active listening session                 |
-| `/api/audio/[id]/sessions`        | POST   | Start listening session                      |
-| `/api/audio/[id]/sessions`        | PATCH  | End listening session                        |
-| **Playlists**                     |        |                                              |
-| `/api/playlists`                  | GET    | List all playlists                           |
-| `/api/playlists`                  | POST   | Create a playlist                            |
-| `/api/playlists/[id]`             | GET    | Get a playlist                               |
-| `/api/playlists/[id]`             | PATCH  | Update a playlist                            |
-| `/api/playlists/[id]`             | DELETE | Delete a playlist                            |
-| `/api/playlists/[id]/items`       | GET    | Get playlist tracks                          |
-| `/api/playlists/[id]/items`       | POST   | Add track to playlist                        |
-| `/api/playlists/[id]/items`       | DELETE | Remove track from playlist                   |
-| `/api/playlists/[id]/items`       | PATCH  | Reorder playlist tracks                      |
-| **Videos**                        |        |                                              |
-| `/api/video`                      | GET    | List videos (paginated, filterable)          |
-| `/api/video`                      | POST   | Create video record                          |
-| `/api/video/[id]`                 | GET    | Get a video                                  |
-| `/api/video/[id]`                 | PATCH  | Update video (title, description, etc.)      |
-| `/api/video/[id]`                 | DELETE | Delete a video (+ S3 file)                   |
-| `/api/video/upload`               | POST   | Upload video file (proxied to S3)            |
-| `/api/video/cover-upload`         | POST   | Upload video thumbnail                       |
-| `/api/video/stream`               | GET    | Stream video with Range support              |
-| `/api/video/download`             | GET    | Download video with proper filename          |
-| `/api/video/[id]/bookmarks`       | GET    | Get timestamp bookmarks                      |
-| `/api/video/[id]/bookmarks`       | POST   | Add a timestamp bookmark                     |
-| `/api/video/[id]/bookmarks`       | DELETE | Remove a bookmark                            |
-| `/api/video/[id]/sessions`        | GET    | Get active viewing session                   |
-| `/api/video/[id]/sessions`        | POST   | Start viewing session                        |
-| `/api/video/[id]/sessions`        | PATCH  | End viewing session                          |
-| **Media Folders**                 |        |                                              |
-| `/api/media-folders`              | GET    | List all folders (paginated, searchable)     |
-| `/api/media-folders`              | POST   | Create a folder                              |
-| `/api/media-folders/[id]`         | GET    | Get a folder                                 |
-| `/api/media-folders/[id]`         | PATCH  | Update folder (name, description, cover)     |
-| `/api/media-folders/[id]`         | DELETE | Delete a folder                              |
-| `/api/media-folders/[id]/items`   | GET    | Get folder contents (paginated, searchable)  |
-| `/api/media-folders/[id]/items`   | POST   | Add item to folder                           |
-| `/api/media-folders/[id]/items`   | DELETE | Remove item from folder                      |
-| `/api/media-folders/search-items` | GET    | Search items across all folders              |
+| Endpoint                          | Method | Description                                              |
+| --------------------------------- | ------ | -------------------------------------------------------- |
+| `/api/health`                     | GET    | Health check (DB + S3 status)                            |
+| `/api/stats`                      | GET    | Storage & library stats                                  |
+| `/api/settings`                   | GET    | Get app settings                                         |
+| `/api/settings`                   | PATCH  | Update app settings                                      |
+| **Authentication**                |        |                                                          |
+| `/api/auth/login`                 | POST   | User login                                               |
+| `/api/auth/logout`                | POST   | User logout                                              |
+| `/api/auth/me`                    | GET    | Check authentication                                     |
+| **Books**                         |        |                                                          |
+| `/api/books`                      | GET    | List books (paginated, filterable)                       |
+| `/api/books`                      | POST   | Create a book                                            |
+| `/api/books/[id]`                 | GET    | Get a book                                               |
+| `/api/books/[id]`                 | PATCH  | Update book (title, author, cover, favorite)             |
+| `/api/books/[id]`                 | DELETE | Delete a book (+ S3 files)                               |
+| `/api/books/upload`               | POST   | Upload book file (proxied to S3)                         |
+| `/api/books/cover-upload`         | POST   | Upload cover image (proxied to S3)                       |
+| `/api/books/stream`               | GET    | Stream book/cover from S3 (proxy)                        |
+| `/api/books/upload-url`           | POST   | Get presigned upload URL (legacy)                        |
+| `/api/books/cover-upload-url`     | POST   | Get presigned cover upload URL (legacy)                  |
+| **Bookmarks**                     |        |                                                          |
+| `/api/books/[id]/bookmarks`       | GET    | Get bookmarks for a book                                 |
+| `/api/books/[id]/bookmarks`       | POST   | Add a bookmark                                           |
+| `/api/books/[id]/bookmarks`       | DELETE | Remove a bookmark                                        |
+| **Notes**                         |        |                                                          |
+| `/api/books/[id]/notes`           | GET    | Get notes for a book                                     |
+| `/api/books/[id]/notes`           | POST   | Create a note                                            |
+| `/api/books/[id]/notes`           | PATCH  | Update a note                                            |
+| `/api/books/[id]/notes`           | DELETE | Delete a note                                            |
+| **Reading Sessions**              |        |                                                          |
+| `/api/books/[id]/sessions`        | GET    | Get active reading session                               |
+| `/api/books/[id]/sessions`        | POST   | Start reading session                                    |
+| `/api/books/[id]/sessions`        | PATCH  | End reading session                                      |
+| **Collections**                   |        |                                                          |
+| `/api/collections`                | GET    | List all collections                                     |
+| `/api/collections`                | POST   | Create a collection                                      |
+| `/api/collections/[id]`           | GET    | Get a collection                                         |
+| `/api/collections/[id]`           | PATCH  | Update a collection                                      |
+| `/api/collections/[id]`           | DELETE | Delete a collection                                      |
+| **Wishlist**                      |        |                                                          |
+| `/api/wishlist`                   | GET    | List wishlist items (paginated, filterable by mediaType) |
+| `/api/wishlist`                   | POST   | Add to wishlist (supports book/audio/video types)        |
+| `/api/wishlist/check-duplicates`  | GET    | Search for duplicate titles in library                   |
+| `/api/wishlist/[id]`              | GET    | Get wishlist item                                        |
+| `/api/wishlist/[id]`              | PATCH  | Update wishlist item                                     |
+| `/api/wishlist/[id]`              | DELETE | Remove from wishlist                                     |
+| **Audio Tracks**                  |        |                                                          |
+| `/api/audio`                      | GET    | List audio tracks (paginated, filterable)                |
+| `/api/audio`                      | POST   | Create audio track record                                |
+| `/api/audio/[id]`                 | GET    | Get an audio track                                       |
+| `/api/audio/[id]`                 | PATCH  | Update track (title, artist, album, etc.)                |
+| `/api/audio/[id]`                 | DELETE | Delete a track (+ S3 file)                               |
+| `/api/audio/upload`               | POST   | Upload audio file (proxied to S3)                        |
+| `/api/audio/cover-upload`         | POST   | Upload audio cover image (proxied to S3)                 |
+| `/api/audio/stream`               | GET    | Stream audio with Range support (seeking)                |
+| `/api/audio/download`             | GET    | Download audio with proper filename                      |
+| `/api/audio/metadata`             | GET    | Get unique albums/artists for autocomplete               |
+| **Audio Bookmarks**               |        |                                                          |
+| `/api/audio/[id]/bookmarks`       | GET    | Get timestamp bookmarks for a track                      |
+| `/api/audio/[id]/bookmarks`       | POST   | Add a timestamp bookmark                                 |
+| `/api/audio/[id]/bookmarks`       | DELETE | Remove a bookmark                                        |
+| **Listening Sessions**            |        |                                                          |
+| `/api/audio/[id]/sessions`        | GET    | Get active listening session                             |
+| `/api/audio/[id]/sessions`        | POST   | Start listening session                                  |
+| `/api/audio/[id]/sessions`        | PATCH  | End listening session                                    |
+| **Playlists**                     |        |                                                          |
+| `/api/playlists`                  | GET    | List all playlists                                       |
+| `/api/playlists`                  | POST   | Create a playlist                                        |
+| `/api/playlists/[id]`             | GET    | Get a playlist                                           |
+| `/api/playlists/[id]`             | PATCH  | Update a playlist                                        |
+| `/api/playlists/[id]`             | DELETE | Delete a playlist                                        |
+| `/api/playlists/[id]/items`       | GET    | Get playlist tracks                                      |
+| `/api/playlists/[id]/items`       | POST   | Add track to playlist                                    |
+| `/api/playlists/[id]/items`       | DELETE | Remove track from playlist                               |
+| `/api/playlists/[id]/items`       | PATCH  | Reorder playlist tracks                                  |
+| **Videos**                        |        |                                                          |
+| `/api/video`                      | GET    | List videos (paginated, filterable)                      |
+| `/api/video`                      | POST   | Create video record                                      |
+| `/api/video/[id]`                 | GET    | Get a video                                              |
+| `/api/video/[id]`                 | PATCH  | Update video (title, description, etc.)                  |
+| `/api/video/[id]`                 | DELETE | Delete a video (+ S3 file)                               |
+| `/api/video/upload`               | POST   | Upload video file (proxied to S3)                        |
+| `/api/video/cover-upload`         | POST   | Upload video thumbnail                                   |
+| `/api/video/stream`               | GET    | Stream video with Range support                          |
+| `/api/video/download`             | GET    | Download video with proper filename                      |
+| `/api/video/[id]/bookmarks`       | GET    | Get timestamp bookmarks                                  |
+| `/api/video/[id]/bookmarks`       | POST   | Add a timestamp bookmark                                 |
+| `/api/video/[id]/bookmarks`       | DELETE | Remove a bookmark                                        |
+| `/api/video/[id]/sessions`        | GET    | Get active viewing session                               |
+| `/api/video/[id]/sessions`        | POST   | Start viewing session                                    |
+| `/api/video/[id]/sessions`        | PATCH  | End viewing session                                      |
+| **Media Folders**                 |        |                                                          |
+| `/api/media-folders`              | GET    | List all folders (paginated, searchable)                 |
+| `/api/media-folders`              | POST   | Create a folder                                          |
+| `/api/media-folders/[id]`         | GET    | Get a folder                                             |
+| `/api/media-folders/[id]`         | PATCH  | Update folder (name, description, cover)                 |
+| `/api/media-folders/[id]`         | DELETE | Delete a folder                                          |
+| `/api/media-folders/[id]/items`   | GET    | Get folder contents (paginated, searchable)              |
+| `/api/media-folders/[id]/items`   | POST   | Add item to folder                                       |
+| `/api/media-folders/[id]/items`   | DELETE | Remove item from folder                                  |
+| `/api/media-folders/search-items` | GET    | Search items across all folders                          |
 
 ## 🧪 Development
 

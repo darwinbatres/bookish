@@ -602,6 +602,7 @@ export async function toggleBookFavorite(
 import type {
   DBWishlistItem,
   WishlistPriority,
+  WishlistMediaType,
   PaginatedResponse as PaginatedResponseType,
 } from "@/types";
 
@@ -614,6 +615,7 @@ export interface FetchWishlistPaginatedParams {
   page?: number;
   limit?: number;
   search?: string;
+  mediaType?: WishlistMediaType;
 }
 
 export async function fetchWishlistPaginated(
@@ -629,6 +631,10 @@ export async function fetchWishlistPaginated(
     searchParams.set("search", params.search.trim());
   }
 
+  if (params.mediaType) {
+    searchParams.set("mediaType", params.mediaType);
+  }
+
   const response = await fetch(`${API_BASE}/wishlist?${searchParams}`);
   return handleResponse<PaginatedResponseType<DBWishlistItem>>(response);
 }
@@ -636,6 +642,7 @@ export async function fetchWishlistPaginated(
 export interface CreateWishlistItemInput {
   title: string;
   author?: string;
+  mediaType?: WishlistMediaType;
   notes?: string;
   priority?: WishlistPriority;
   url?: string;
@@ -655,6 +662,7 @@ export async function createWishlistItem(
 export interface UpdateWishlistItemInput {
   title?: string;
   author?: string;
+  mediaType?: WishlistMediaType;
   notes?: string;
   priority?: WishlistPriority;
   url?: string;
@@ -677,6 +685,23 @@ export async function deleteWishlistItem(id: string): Promise<void> {
     method: "DELETE",
   });
   await handleResponse<{ success: boolean }>(response);
+}
+
+// Duplicate detection when adding to wishlist
+export interface DuplicateMatch {
+  id: string;
+  title: string;
+  type: "book" | "audio" | "video" | "wishlist";
+  author?: string;
+}
+
+export async function checkWishlistDuplicates(
+  title: string
+): Promise<DuplicateMatch[]> {
+  const response = await fetch(
+    `${API_BASE}/wishlist/check-duplicates?title=${encodeURIComponent(title)}`
+  );
+  return handleResponse<DuplicateMatch[]>(response);
 }
 
 // Audio Tracks API

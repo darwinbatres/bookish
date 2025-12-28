@@ -64,11 +64,12 @@ CREATE TABLE IF NOT EXISTS books (
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Wishlist table (books you want but don't have yet)
+-- Wishlist table (media you want but don't have yet)
 CREATE TABLE IF NOT EXISTS wishlist (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     title VARCHAR(500) NOT NULL,
     author VARCHAR(500),
+    media_type VARCHAR(20) NOT NULL DEFAULT 'book' CHECK (media_type IN ('book', 'audio', 'video')),
     notes TEXT,
     priority INTEGER NOT NULL DEFAULT 0 CHECK (priority >= 0 AND priority <= 2),
     -- 0 = low, 1 = medium, 2 = high
@@ -141,6 +142,10 @@ CREATE INDEX IF NOT EXISTS idx_wishlist_priority ON wishlist(priority DESC);
 CREATE INDEX IF NOT EXISTS idx_wishlist_created_at ON wishlist(created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_wishlist_title_trgm ON wishlist USING gin (title gin_trgm_ops);
+
+CREATE INDEX IF NOT EXISTS idx_wishlist_media_type ON wishlist(media_type);
+
+CREATE INDEX IF NOT EXISTS idx_wishlist_media_type_priority ON wishlist(media_type, priority DESC, created_at DESC);
 
 -- Search indexes for scalable text search
 CREATE INDEX IF NOT EXISTS idx_books_title_trgm ON books USING gin (title gin_trgm_ops);

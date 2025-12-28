@@ -8,6 +8,11 @@ export type BookFormat = "pdf" | "epub" | "mobi";
  */
 export type WishlistPriority = 0 | 1 | 2; // 0 = low, 1 = medium, 2 = high
 
+/**
+ * Media types for wishlist items
+ */
+export type WishlistMediaType = "book" | "audio" | "video";
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Database types (PostgreSQL schema)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -81,20 +86,22 @@ export interface DBBook {
 }
 
 /**
- * Represents a wishlist item (book you want but don't have)
+ * Represents a wishlist item (media you want but don't have)
  */
 export interface DBWishlistItem {
   /** UUID primary key */
   id: string;
-  /** Title of the book */
+  /** Title of the media */
   title: string;
-  /** Author of the book */
+  /** Creator (author for books, artist for audio, creator for video) */
   author?: string;
+  /** Type of media: book, audio, or video */
+  mediaType: WishlistMediaType;
   /** Optional notes about this item */
   notes?: string;
   /** Priority: 0 = low, 1 = medium, 2 = high */
   priority: WishlistPriority;
-  /** Optional URL to purchase/find the book */
+  /** Optional URL to purchase/find the media */
   url?: string;
   /** ISO timestamp when created */
   createdAt: string;

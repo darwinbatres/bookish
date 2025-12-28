@@ -6,12 +6,16 @@ import {
   deleteWishlistItem,
 } from "@/lib/db";
 import { withAuth } from "@/lib/api";
-import type { DBWishlistItem, ApiError } from "@/types";
+import type { DBWishlistItem, ApiError, WishlistMediaType } from "@/types";
+
+// Valid media types for wishlist
+const mediaTypeSchema = z.enum(["book", "audio", "video"]);
 
 // Request validation for updating a wishlist item
 const updateWishlistSchema = z.object({
   title: z.string().min(1).optional(),
   author: z.string().optional(),
+  mediaType: mediaTypeSchema.optional(),
   notes: z.string().optional(),
   priority: z.number().int().min(0).max(2).optional(),
   url: z.string().url().optional().or(z.literal("")),
@@ -61,6 +65,7 @@ async function handler(
           ...result.data,
           url: result.data.url === "" ? undefined : result.data.url,
           priority: result.data.priority as 0 | 1 | 2 | undefined,
+          mediaType: result.data.mediaType as WishlistMediaType | undefined,
         });
 
         if (!item) {

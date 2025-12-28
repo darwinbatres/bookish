@@ -1037,6 +1037,31 @@ export function MediaFoldersView({
                     currentMode={itemViewMode}
                     onChange={handleItemsViewModeChange}
                   />
+                  {/* Folder actions dropdown */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="icon">
+                        <MoreVertical className="w-4 h-4" />
+                        <span className="sr-only">Folder actions</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={() => openEditModal(selectedFolder)}
+                      >
+                        <Edit className="mr-2 h-4 w-4" />
+                        Edit Folder
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => setDeleteTarget(selectedFolder)}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Delete Folder
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </div>
 
