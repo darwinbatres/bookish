@@ -49,6 +49,10 @@ interface DBMediaFolderItemRow {
   item_progress?: number;
   item_total?: number;
   item_format?: string;
+  item_is_favorite?: boolean;
+  item_folder_count?: string;
+  item_s3_key?: string;
+  item_bookmarks_count?: string;
 }
 
 // ============================================================================
@@ -99,6 +103,14 @@ function mapDBRowToMediaFolderItemWithDetails(
     itemProgress: row.item_progress ?? undefined,
     itemTotal: row.item_total ?? undefined,
     itemFormat: row.item_format ?? undefined,
+    itemIsFavorite: row.item_is_favorite ?? false,
+    itemFolderCount: row.item_folder_count
+      ? parseInt(row.item_folder_count, 10)
+      : undefined,
+    itemS3Key: row.item_s3_key ?? undefined,
+    itemBookmarksCount: row.item_bookmarks_count
+      ? parseInt(row.item_bookmarks_count, 10)
+      : undefined,
   };
 }
 
@@ -347,6 +359,7 @@ export async function getFolderItems(
   const pool = getPool();
 
   // Complex query that joins with books, audio_tracks, and video_tracks
+  // Includes favorite status, folder count, S3 key, and bookmarks count for consistency with library views
   const result = await pool.query<DBMediaFolderItemRow>(
     `SELECT 
       mfi.*,
@@ -356,7 +369,15 @@ export async function getFolderItems(
       COALESCE(a.duration_seconds, v.duration_seconds) as item_duration,
       COALESCE(b.current_page, a.current_position, v.current_position) as item_progress,
       COALESCE(b.total_pages, a.duration_seconds, v.duration_seconds) as item_total,
-      COALESCE(b.format, a.format, v.format) as item_format
+      COALESCE(b.format, a.format, v.format) as item_format,
+      COALESCE(b.is_favorite, a.is_favorite, v.is_favorite) as item_is_favorite,
+      COALESCE(b.s3_key, a.s3_key, v.s3_key) as item_s3_key,
+      (SELECT COUNT(*) FROM media_folder_items mfi2 WHERE mfi2.item_id = mfi.item_id AND mfi2.item_type = mfi.item_type)::text as item_folder_count,
+      (CASE 
+        WHEN mfi.item_type = 'audio' THEN (SELECT COUNT(*) FROM audio_bookmarks ab WHERE ab.track_id = mfi.item_id)
+        WHEN mfi.item_type = 'video' THEN (SELECT COUNT(*) FROM video_bookmarks vb WHERE vb.video_id = mfi.item_id)
+        ELSE 0
+      END)::text as item_bookmarks_count
     FROM media_folder_items mfi
     LEFT JOIN books b ON mfi.item_type = 'book' AND mfi.item_id = b.id
     LEFT JOIN audio_tracks a ON mfi.item_type = 'audio' AND mfi.item_id = a.id
@@ -396,7 +417,7 @@ export async function getFolderItemsWithPagination(
   );
   const totalItems = parseInt(countResult.rows[0].count, 10);
 
-  // Data query
+  // Data query - includes favorite status, folder count, S3 key, and bookmarks count for consistency
   const result = await pool.query<DBMediaFolderItemRow>(
     `SELECT 
       mfi.*,
@@ -406,7 +427,15 @@ export async function getFolderItemsWithPagination(
       COALESCE(a.duration_seconds, v.duration_seconds) as item_duration,
       COALESCE(b.current_page, a.current_position, v.current_position) as item_progress,
       COALESCE(b.total_pages, a.duration_seconds, v.duration_seconds) as item_total,
-      COALESCE(b.format, a.format, v.format) as item_format
+      COALESCE(b.format, a.format, v.format) as item_format,
+      COALESCE(b.is_favorite, a.is_favorite, v.is_favorite) as item_is_favorite,
+      COALESCE(b.s3_key, a.s3_key, v.s3_key) as item_s3_key,
+      (SELECT COUNT(*) FROM media_folder_items mfi2 WHERE mfi2.item_id = mfi.item_id AND mfi2.item_type = mfi.item_type)::text as item_folder_count,
+      (CASE 
+        WHEN mfi.item_type = 'audio' THEN (SELECT COUNT(*) FROM audio_bookmarks ab WHERE ab.track_id = mfi.item_id)
+        WHEN mfi.item_type = 'video' THEN (SELECT COUNT(*) FROM video_bookmarks vb WHERE vb.video_id = mfi.item_id)
+        ELSE 0
+      END)::text as item_bookmarks_count
     FROM media_folder_items mfi
     LEFT JOIN books b ON mfi.item_type = 'book' AND mfi.item_id = b.id
     LEFT JOIN audio_tracks a ON mfi.item_type = 'audio' AND mfi.item_id = a.id

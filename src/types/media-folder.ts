@@ -76,6 +76,14 @@ export interface DBMediaFolderItemWithDetails extends DBMediaFolderItem {
   itemTotal?: number;
   /** Item format */
   itemFormat?: string;
+  /** Whether the item is favorited */
+  itemIsFavorite?: boolean;
+  /** How many folders this item is in */
+  itemFolderCount?: number;
+  /** S3 key for downloading the file */
+  itemS3Key?: string;
+  /** Number of bookmarks (for audio/video) */
+  itemBookmarksCount?: number;
 }
 
 /**

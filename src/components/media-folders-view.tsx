@@ -22,6 +22,10 @@ import {
   Plus,
   HardDrive,
   Calendar,
+  Star,
+  Download,
+  Heart,
+  Bookmark,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -64,12 +68,17 @@ import {
   getVideoStreamUrl,
   getDownloadUrl,
   uploadMediaFolderCover,
+  toggleBookFavorite,
+  toggleAudioFavorite,
+  toggleVideoFavorite,
 } from "@/lib/api/client";
 import { BookCover } from "@/components/book-cover";
 import { AudioCover } from "@/components/audio-cover";
 import { VideoCover } from "@/components/video-cover";
 import { FolderCover } from "@/components/folder-cover";
 import { FolderUpload } from "@/components/folder-upload";
+import { MembershipBadge } from "@/components/membership-badge";
+import { AddToFolderModal } from "@/components/add-to-folder-modal";
 import {
   SearchInput,
   PaginationControls,
@@ -193,6 +202,8 @@ export function MediaFoldersView({
   const [editFolder, setEditFolder] = useState<DBMediaFolder | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DBMediaFolder | null>(null);
   const [removeItemTarget, setRemoveItemTarget] =
+    useState<DBMediaFolderItemWithDetails | null>(null);
+  const [addToFolderTarget, setAddToFolderTarget] =
     useState<DBMediaFolderItemWithDetails | null>(null);
 
   // View mode change handlers (persist to localStorage)
@@ -635,6 +646,64 @@ export function MediaFoldersView({
     }
   };
 
+  // Handle toggling favorite for an item
+  const handleToggleFavorite = useCallback(
+    async (item: DBMediaFolderItemWithDetails) => {
+      const newFavorite = !item.itemIsFavorite;
+      try {
+        if (item.itemType === "book") {
+          await toggleBookFavorite(item.itemId, newFavorite);
+        } else if (item.itemType === "audio") {
+          await toggleAudioFavorite(item.itemId, newFavorite);
+        } else if (item.itemType === "video") {
+          await toggleVideoFavorite(item.itemId, newFavorite);
+        }
+        // Update local state
+        setFolderItems((prev) =>
+          prev.map((i) =>
+            i.id === item.id ? { ...i, itemIsFavorite: newFavorite } : i
+          )
+        );
+        toast.success(
+          newFavorite ? "Added to favorites" : "Removed from favorites"
+        );
+      } catch (error) {
+        console.error("Failed to toggle favorite:", error);
+        toast.error("Failed to update favorite");
+      }
+    },
+    []
+  );
+
+  // Handle downloading an item
+  const handleDownloadItem = useCallback(
+    async (item: DBMediaFolderItemWithDetails) => {
+      if (!item.itemS3Key) {
+        toast.error("Download not available");
+        return;
+      }
+      try {
+        toast.info("Preparing download...");
+        const { downloadUrl } = await getDownloadUrl(item.itemS3Key);
+        const link = document.createElement("a");
+        link.href = downloadUrl;
+        const safeTitle = (item.itemTitle || "file")
+          .replace(/[^a-zA-Z0-9\s-]/g, "")
+          .trim();
+        link.download = `${safeTitle}.${item.itemFormat || "file"}`;
+        link.target = "_blank";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        toast.success("Download started");
+      } catch (error) {
+        console.error("Failed to download:", error);
+        toast.error("Failed to download");
+      }
+    },
+    []
+  );
+
   // Handle saving notes
   const handleSaveNotes = async () => {
     if (!selectedFolder) return;
@@ -938,85 +1007,185 @@ export function MediaFoldersView({
                   />
                 </div>
               ) : itemViewMode === "grid" ? (
-                /* Grid View */
+                /* Grid View - matching audio-grid style */
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {folderItems.map((item) => (
-                    <div
-                      key={item.id}
-                      className="group relative flex flex-col rounded-lg border overflow-hidden bg-card hover:shadow-md transition-all cursor-pointer"
-                      onClick={() => handleItemClick(item)}
-                    >
-                      {/* Cover */}
-                      <div className="relative aspect-3/4">
-                        {item.itemType === "book" && (
-                          <BookCover
-                            coverUrl={item.itemCoverUrl}
-                            format={(item.itemFormat as BookFormat) || "pdf"}
-                            title={item.itemTitle || "Untitled"}
-                            className="w-full h-full"
-                          />
-                        )}
-                        {item.itemType === "audio" && (
-                          <AudioCover
-                            coverUrl={item.itemCoverUrl}
-                            title={item.itemTitle || "Untitled"}
-                            className="w-full h-full"
-                          />
-                        )}
-                        {item.itemType === "video" && (
-                          <VideoCover
-                            coverUrl={item.itemCoverUrl}
-                            title={item.itemTitle || "Untitled"}
-                            className="w-full h-full"
-                          />
-                        )}
-                        {/* Play overlay */}
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                          <Play className="h-10 w-10 text-white" fill="white" />
+                  {folderItems.map((item) => {
+                    const progress =
+                      item.itemProgress && item.itemTotal && item.itemTotal > 0
+                        ? Math.round((item.itemProgress / item.itemTotal) * 100)
+                        : 0;
+
+                    return (
+                      <article
+                        key={item.id}
+                        role="listitem"
+                        className="group flex flex-col bg-card border border-border rounded-xl overflow-hidden hover:border-muted-foreground/30 transition-all cursor-pointer focus-within:ring-2 focus-within:ring-ring"
+                        onClick={() => handleItemClick(item)}
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            handleItemClick(item);
+                          }
+                        }}
+                      >
+                        {/* Cover - fixed height like audio-grid */}
+                        <div className="relative h-32">
+                          {item.itemType === "book" && (
+                            <BookCover
+                              coverUrl={item.itemCoverUrl}
+                              format={(item.itemFormat as BookFormat) || "pdf"}
+                              title={item.itemTitle || "Untitled"}
+                              className="w-full h-full"
+                              iconClassName="w-12 h-12"
+                            />
+                          )}
+                          {item.itemType === "audio" && (
+                            <AudioCover
+                              coverUrl={item.itemCoverUrl}
+                              title={item.itemTitle || "Untitled"}
+                              className="w-full h-full"
+                              iconClassName="w-12 h-12"
+                            />
+                          )}
+                          {item.itemType === "video" && (
+                            <VideoCover
+                              coverUrl={item.itemCoverUrl}
+                              title={item.itemTitle || "Untitled"}
+                              className="w-full h-full"
+                              iconClassName="w-12 h-12"
+                            />
+                          )}
+
+                          {/* Favorite star */}
+                          {item.itemIsFavorite && (
+                            <div className="absolute top-2 left-2">
+                              <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
+                            </div>
+                          )}
+
+                          {/* Top right: membership + dropdown */}
+                          <div className="absolute top-2 right-2 flex gap-1 z-10">
+                            {(item.itemFolderCount ?? 0) > 1 && (
+                              <MembershipBadge
+                                folderCount={item.itemFolderCount}
+                                className="opacity-0 group-hover:opacity-100 transition-opacity"
+                              />
+                            )}
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-8 w-8 p-0 bg-background/80 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <MoreVertical className="w-4 h-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleToggleFavorite(item);
+                                  }}
+                                >
+                                  <Star
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      item.itemIsFavorite &&
+                                        "fill-amber-500 text-amber-500"
+                                    )}
+                                  />
+                                  {item.itemIsFavorite
+                                    ? "Remove from Favorites"
+                                    : "Add to Favorites"}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDownloadItem(item);
+                                  }}
+                                >
+                                  <Download className="mr-2 h-4 w-4" />
+                                  Download
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setAddToFolderTarget(item);
+                                  }}
+                                >
+                                  <FolderPlus className="mr-2 h-4 w-4" />
+                                  Add to Folder
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setRemoveItemTarget(item);
+                                  }}
+                                  className="text-destructive focus:text-destructive"
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  Remove from Folder
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+
+                          {/* Play overlay */}
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                            <Play
+                              className="h-10 w-10 text-white"
+                              fill="white"
+                            />
+                          </div>
                         </div>
-                        {/* Type badge */}
-                        <div className="absolute top-2 left-2 p-1 rounded bg-black/60">
-                          {getItemIcon(item.itemType)}
+
+                        {/* Content */}
+                        <div className="flex-1 p-4 flex flex-col">
+                          <h3
+                            className="font-semibold text-sm truncate"
+                            title={item.itemTitle || "Untitled"}
+                          >
+                            {item.itemTitle || "Untitled"}
+                          </h3>
+                          {item.itemAuthor && (
+                            <p className="text-xs text-muted-foreground truncate mt-0.5">
+                              {item.itemAuthor}
+                            </p>
+                          )}
+
+                          <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+                            <span className="flex items-center gap-1">
+                              {getItemIcon(item.itemType)}
+                              <span className="uppercase">{item.itemType}</span>
+                            </span>
+                            {(item.itemBookmarksCount ?? 0) > 0 && (
+                              <span className="flex items-center gap-1">
+                                <Bookmark className="w-3 h-3" />
+                                {item.itemBookmarksCount}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Progress */}
+                          <div className="mt-auto pt-3">
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className="text-[10px] text-muted-foreground">
+                                {item.itemFormat?.toUpperCase() || ""}
+                              </span>
+                              <span className="text-[10px] font-medium">
+                                {progress}%
+                              </span>
+                            </div>
+                            <Progress value={progress} className="h-1" />
+                          </div>
                         </div>
-                      </div>
-                      {/* Info */}
-                      <div className="p-3 flex-1">
-                        <p className="font-medium text-sm truncate">
-                          {item.itemTitle || "Untitled"}
-                        </p>
-                        {item.itemAuthor && (
-                          <p className="text-xs text-muted-foreground truncate">
-                            {item.itemAuthor}
-                          </p>
-                        )}
-                      </div>
-                      {/* Actions */}
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="absolute top-2 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 bg-black/50 hover:bg-black/70"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <MoreVertical className="h-4 w-4 text-white" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setRemoveItemTarget(item);
-                            }}
-                            className="text-destructive focus:text-destructive"
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Remove from Folder
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  ))}
+                      </article>
+                    );
+                  })}
                 </div>
               ) : itemViewMode === "list" ? (
                 /* List View - matching BookTable style */
@@ -1078,6 +1247,16 @@ export function MediaFoldersView({
                         <div className="flex-1 min-w-0">
                           <h3 className="font-semibold text-sm text-foreground truncate pr-2 flex items-center gap-1.5">
                             {getItemIcon(item.itemType)}
+                            {item.itemIsFavorite && (
+                              <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500 shrink-0" />
+                            )}
+                            {(item.itemFolderCount ?? 0) > 1 && (
+                              <MembershipBadge
+                                folderCount={item.itemFolderCount}
+                                size="sm"
+                                className="shrink-0"
+                              />
+                            )}
                             <span className="truncate">
                               {item.itemTitle || "Untitled"}
                             </span>
@@ -1098,6 +1277,17 @@ export function MediaFoldersView({
                                 </span>
                                 <span className="text-xs text-muted-foreground uppercase">
                                   {item.itemFormat}
+                                </span>
+                              </>
+                            )}
+                            {(item.itemBookmarksCount ?? 0) > 0 && (
+                              <>
+                                <span className="text-muted-foreground/40">
+                                  •
+                                </span>
+                                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                                  <Bookmark className="w-3 h-3" />
+                                  {item.itemBookmarksCount}
                                 </span>
                               </>
                             )}
@@ -1161,6 +1351,33 @@ export function MediaFoldersView({
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 <DropdownMenuItem
+                                  onClick={() => handleToggleFavorite(item)}
+                                >
+                                  <Star
+                                    className={cn(
+                                      "w-4 h-4 mr-2",
+                                      item.itemIsFavorite &&
+                                        "fill-amber-500 text-amber-500"
+                                    )}
+                                  />
+                                  {item.itemIsFavorite
+                                    ? "Remove from Favorites"
+                                    : "Add to Favorites"}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleDownloadItem(item)}
+                                >
+                                  <Download className="w-4 h-4 mr-2" />
+                                  Download
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => setAddToFolderTarget(item)}
+                                >
+                                  <FolderPlus className="w-4 h-4 mr-2" />
+                                  Add to Folder
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
                                   onClick={() => setRemoveItemTarget(item)}
                                   className="text-destructive focus:text-destructive"
                                 >
@@ -1176,113 +1393,192 @@ export function MediaFoldersView({
                   })}
                 </div>
               ) : itemViewMode === "cards" ? (
-                /* Cards View */
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {folderItems.map((item) => (
-                    <div
-                      key={item.id}
-                      className="group flex gap-4 p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors cursor-pointer"
-                      onClick={() => handleItemClick(item)}
-                    >
-                      {/* Cover */}
-                      <div className="relative w-20 h-28 shrink-0 rounded overflow-hidden">
-                        {item.itemType === "book" && (
-                          <BookCover
-                            coverUrl={item.itemCoverUrl}
-                            format={(item.itemFormat as BookFormat) || "pdf"}
-                            title={item.itemTitle || "Untitled"}
-                            className="w-full h-full"
-                          />
-                        )}
-                        {item.itemType === "audio" && (
-                          <AudioCover
-                            coverUrl={item.itemCoverUrl}
-                            title={item.itemTitle || "Untitled"}
-                            className="w-full h-full"
-                          />
-                        )}
-                        {item.itemType === "video" && (
-                          <VideoCover
-                            coverUrl={item.itemCoverUrl}
-                            title={item.itemTitle || "Untitled"}
-                            className="w-full h-full"
-                          />
-                        )}
-                        {/* Play overlay */}
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                          <Play className="h-6 w-6 text-white" fill="white" />
-                        </div>
-                      </div>
-                      {/* Info */}
-                      <div className="flex-1 min-w-0 flex flex-col">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              {getItemIcon(item.itemType)}
-                              <span className="font-medium text-sm truncate">
-                                {item.itemTitle || "Untitled"}
-                              </span>
-                            </div>
-                            {item.itemAuthor && (
-                              <p className="text-sm text-muted-foreground truncate mt-1">
-                                {item.itemAuthor}
-                              </p>
-                            )}
-                          </div>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 shrink-0 -mt-1 -mr-1"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setRemoveItemTarget(item);
-                                }}
-                                className="text-destructive focus:text-destructive"
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                Remove from Folder
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                        {/* Progress */}
-                        {item.itemProgress &&
-                          item.itemTotal &&
-                          item.itemTotal > 0 && (
-                            <div className="mt-auto pt-2">
-                              <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-                                <span>Progress</span>
-                                <span>
-                                  {Math.round(
-                                    (item.itemProgress / item.itemTotal) * 100
-                                  )}
-                                  %
-                                </span>
-                              </div>
-                              <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                                <div
-                                  className="h-full bg-primary rounded-full"
-                                  style={{
-                                    width: `${Math.round(
-                                      (item.itemProgress / item.itemTotal) * 100
-                                    )}%`,
-                                  }}
-                                />
-                              </div>
+                /* Cards View - matching book-cards style */
+                <div
+                  className="grid grid-cols-1 md:grid-cols-2 gap-4"
+                  role="list"
+                >
+                  {folderItems.map((item) => {
+                    const progress =
+                      item.itemProgress && item.itemTotal && item.itemTotal > 0
+                        ? Math.round((item.itemProgress / item.itemTotal) * 100)
+                        : 0;
+
+                    return (
+                      <article
+                        key={item.id}
+                        role="listitem"
+                        className="group flex bg-card border border-border rounded-xl overflow-hidden hover:border-muted-foreground/30 transition-all cursor-pointer focus-within:ring-2 focus-within:ring-ring"
+                        onClick={() => handleItemClick(item)}
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            handleItemClick(item);
+                          }
+                        }}
+                      >
+                        {/* Cover side */}
+                        <div className="w-24 sm:w-32 shrink-0 relative">
+                          {item.itemType === "book" && (
+                            <BookCover
+                              coverUrl={item.itemCoverUrl}
+                              format={(item.itemFormat as BookFormat) || "pdf"}
+                              title={item.itemTitle || "Untitled"}
+                              className="w-full h-full"
+                              iconClassName="w-10 h-10"
+                            />
+                          )}
+                          {item.itemType === "audio" && (
+                            <AudioCover
+                              coverUrl={item.itemCoverUrl}
+                              title={item.itemTitle || "Untitled"}
+                              className="w-full h-full"
+                              iconClassName="w-10 h-10"
+                            />
+                          )}
+                          {item.itemType === "video" && (
+                            <VideoCover
+                              coverUrl={item.itemCoverUrl}
+                              title={item.itemTitle || "Untitled"}
+                              className="w-full h-full"
+                              iconClassName="w-10 h-10"
+                            />
+                          )}
+                          {item.itemIsFavorite && (
+                            <div className="absolute top-2 left-2">
+                              <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
                             </div>
                           )}
-                      </div>
-                    </div>
-                  ))}
+                          {(item.itemFolderCount ?? 0) > 1 && (
+                            <MembershipBadge
+                              folderCount={item.itemFolderCount}
+                              className="absolute top-2 right-2"
+                            />
+                          )}
+                        </div>
+
+                        {/* Content */}
+                        <div className="flex-1 p-4 flex flex-col min-w-0">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <h3
+                                className="font-semibold text-sm truncate"
+                                title={item.itemTitle || "Untitled"}
+                              >
+                                {item.itemTitle || "Untitled"}
+                              </h3>
+                              {item.itemAuthor && (
+                                <p className="text-xs text-muted-foreground truncate mt-0.5">
+                                  {item.itemAuthor}
+                                </p>
+                              )}
+                            </div>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-8 w-8 p-0 shrink-0 -mr-2 -mt-1"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <MoreVertical className="w-4 h-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleToggleFavorite(item);
+                                  }}
+                                >
+                                  <Star
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      item.itemIsFavorite &&
+                                        "fill-amber-500 text-amber-500"
+                                    )}
+                                  />
+                                  {item.itemIsFavorite
+                                    ? "Remove from Favorites"
+                                    : "Add to Favorites"}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDownloadItem(item);
+                                  }}
+                                >
+                                  <Download className="mr-2 h-4 w-4" />
+                                  Download
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setAddToFolderTarget(item);
+                                  }}
+                                >
+                                  <FolderPlus className="mr-2 h-4 w-4" />
+                                  Add to Folder
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setRemoveItemTarget(item);
+                                  }}
+                                  className="text-destructive focus:text-destructive"
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  Remove from Folder
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+
+                          {/* Meta info */}
+                          <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+                            {getItemIcon(item.itemType)}
+                            <span className="uppercase">{item.itemType}</span>
+                            {item.itemFormat && (
+                              <>
+                                <span className="text-muted-foreground/40">
+                                  •
+                                </span>
+                                <span className="uppercase">
+                                  {item.itemFormat}
+                                </span>
+                              </>
+                            )}
+                            {(item.itemBookmarksCount ?? 0) > 0 && (
+                              <>
+                                <span className="text-muted-foreground/40">
+                                  •
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <Bookmark className="w-3 h-3" />
+                                  {item.itemBookmarksCount}
+                                </span>
+                              </>
+                            )}
+                          </div>
+
+                          {/* Progress */}
+                          <div className="mt-auto pt-3">
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className="text-[10px] text-muted-foreground">
+                                Progress
+                              </span>
+                              <span className="text-[10px] font-medium">
+                                {progress}%
+                              </span>
+                            </div>
+                            <Progress value={progress} className="h-1" />
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
                 </div>
               ) : (
                 /* Compact View */
@@ -1294,6 +1590,16 @@ export function MediaFoldersView({
                       onClick={() => handleItemClick(item)}
                     >
                       {getItemIcon(item.itemType)}
+                      {item.itemIsFavorite && (
+                        <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500 shrink-0" />
+                      )}
+                      {(item.itemFolderCount ?? 0) > 1 && (
+                        <MembershipBadge
+                          folderCount={item.itemFolderCount}
+                          size="sm"
+                          className="shrink-0"
+                        />
+                      )}
                       <span className="flex-1 truncate text-sm">
                         {item.itemTitle || "Untitled"}
                       </span>
@@ -1305,17 +1611,90 @@ export function MediaFoldersView({
                       <span className="text-xs text-muted-foreground capitalize shrink-0">
                         {item.itemType}
                       </span>
+                      {/* Favorite toggle */}
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7 shrink-0"
+                        className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setRemoveItemTarget(item);
+                          handleToggleFavorite(item);
                         }}
+                        aria-label={
+                          item.itemIsFavorite
+                            ? "Remove from favorites"
+                            : "Add to favorites"
+                        }
                       >
-                        <X className="h-4 w-4 text-muted-foreground hover:text-destructive" />
+                        <Heart
+                          className={cn(
+                            "h-4 w-4",
+                            item.itemIsFavorite &&
+                              "fill-amber-500 text-amber-500"
+                          )}
+                        />
                       </Button>
+                      {/* More actions */}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 shrink-0"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleFavorite(item);
+                            }}
+                          >
+                            <Star
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                item.itemIsFavorite &&
+                                  "fill-amber-500 text-amber-500"
+                              )}
+                            />
+                            {item.itemIsFavorite
+                              ? "Remove from Favorites"
+                              : "Add to Favorites"}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDownloadItem(item);
+                            }}
+                          >
+                            <Download className="mr-2 h-4 w-4" />
+                            Download
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setAddToFolderTarget(item);
+                            }}
+                          >
+                            <FolderPlus className="mr-2 h-4 w-4" />
+                            Add to Folder
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setRemoveItemTarget(item);
+                            }}
+                            className="text-destructive focus:text-destructive"
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Remove from Folder
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   ))}
                 </div>
@@ -1671,7 +2050,7 @@ export function MediaFoldersView({
                           }}
                         >
                           {/* Cover side */}
-                          <div className="w-24 sm:w-32 aspect-[3/4] shrink-0 relative">
+                          <div className="w-24 sm:w-32 aspect-3/4 shrink-0 relative">
                             <FolderCover
                               coverUrl={folder.coverUrl}
                               name={folder.name}
@@ -2124,6 +2503,22 @@ export function MediaFoldersView({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Add to Folder Modal */}
+      {addToFolderTarget && (
+        <AddToFolderModal
+          open={!!addToFolderTarget}
+          onOpenChange={() => setAddToFolderTarget(null)}
+          itemId={addToFolderTarget.itemId}
+          itemType={addToFolderTarget.itemType}
+          itemTitle={addToFolderTarget.itemTitle || "Untitled"}
+          onSuccess={() => {
+            if (selectedFolder) {
+              loadFolderItems(selectedFolder.id);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
