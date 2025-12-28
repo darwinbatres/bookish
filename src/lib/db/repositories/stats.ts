@@ -31,14 +31,14 @@ export interface StorageStats {
   };
   // Video stats (December 2024)
   videoStats: {
-    totalVideos: number;
+    totalTracks: number;
     totalFavorites: number;
-    completedVideos: number;
-    totalWatchingTime: number; // seconds
+    completedTracks: number;
+    totalWatchTime: number; // seconds
     totalWatchingSessions: number;
     totalVideoBookmarks: number;
     totalStorageBytes: number;
-    videosByFormat: { format: string; count: number; bytes: number }[];
+    tracksByFormat: { format: string; count: number; bytes: number }[];
   };
   // Media folders stats (December 2024)
   mediaFoldersStats: {
@@ -297,14 +297,18 @@ export async function getStorageStats(): Promise<StorageStats> {
     pool
       .query<{
         count: string;
-      }>("SELECT COUNT(*) as count FROM video_tracks WHERE completed_at IS NOT NULL")
+      }>(
+        "SELECT COUNT(*) as count FROM video_tracks WHERE completed_at IS NOT NULL"
+      )
       .catch(() => ({ rows: [{ count: "0" }] })),
 
     // Video: Total watching time
     pool
       .query<{
         total: string;
-      }>("SELECT COALESCE(SUM(total_watching_time), 0) as total FROM video_tracks")
+      }>(
+        "SELECT COALESCE(SUM(total_watching_time), 0) as total FROM video_tracks"
+      )
       .catch(() => ({ rows: [{ total: "0" }] })),
 
     // Video: Total watching sessions
@@ -477,10 +481,10 @@ export async function getStorageStats(): Promise<StorageStats> {
     },
     // Video stats (December 2024)
     videoStats: {
-      totalVideos: parseInt(videoTracksResult.rows[0]?.count || "0", 10),
+      totalTracks: parseInt(videoTracksResult.rows[0]?.count || "0", 10),
       totalFavorites: parseInt(videoFavoritesResult.rows[0]?.count || "0", 10),
-      completedVideos: parseInt(completedVideoResult.rows[0]?.count || "0", 10),
-      totalWatchingTime: parseInt(watchingTimeResult.rows[0]?.total || "0", 10),
+      completedTracks: parseInt(completedVideoResult.rows[0]?.count || "0", 10),
+      totalWatchTime: parseInt(watchingTimeResult.rows[0]?.total || "0", 10),
       totalWatchingSessions: parseInt(
         watchingSessResult.rows[0]?.count || "0",
         10
@@ -490,7 +494,7 @@ export async function getStorageStats(): Promise<StorageStats> {
         10
       ),
       totalStorageBytes: parseInt(videoSizeResult.rows[0]?.total || "0", 10),
-      videosByFormat: (videoFormatResult.rows || []).map((row) => ({
+      tracksByFormat: (videoFormatResult.rows || []).map((row) => ({
         format: row.format,
         count: parseInt(row.count, 10),
         bytes: parseInt(row.bytes, 10),

@@ -26,16 +26,16 @@ import {
 import { Button } from "@/components/ui/button";
 import { PageLayout } from "@/components/ui/page-layout";
 
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
+function formatBytes(bytes: number | undefined | null): string {
+  if (!bytes || bytes === 0 || isNaN(bytes)) return "0 B";
   const k = 1024;
   const sizes = ["B", "KB", "MB", "GB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
 }
 
-function formatReadingTime(seconds: number): string {
-  if (seconds === 0) return "0m";
+function formatReadingTime(seconds: number | undefined | null): string {
+  if (!seconds || seconds === 0 || isNaN(seconds)) return "0m";
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   if (hours === 0) return `${minutes}m`;
