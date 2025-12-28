@@ -1,6 +1,31 @@
-import type { DBBook } from "@/types";
+import { useState, useCallback, useEffect } from "react";
+import type { DBBook, DBCollection } from "@/types";
 import { BookCover } from "../book-cover";
+import { MembershipBadge } from "../membership-badge";
+import { EditBookModal } from "../edit-book-modal";
+import { AddToFolderModal } from "../add-to-folder-modal";
+import { DeleteConfirmationInfo } from "../delete-confirmation-info";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Trash2,
   BookOpen,
@@ -8,13 +33,29 @@ import {
   Bookmark,
   HardDrive,
   Star,
+  MoreVertical,
+  FolderInput,
+  Folder,
+  Check,
+  Download,
+  Pencil,
+  FolderPlus,
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
+import {
+  deleteBook,
+  addBookToCollection,
+  fetchCollections,
+  getDownloadUrl,
+  toggleBookFavorite,
+} from "@/lib/api/client";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 interface BookGridProps {
   books: DBBook[];
   onReadBook: (book: DBBook) => void;
-  onDeleteBook: (book: DBBook) => void;
+  onBooksChange: () => void;
 }
 
 function calculateProgress(currentPage: number, totalPages?: number): number {
@@ -30,7 +71,99 @@ function formatBytes(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
 }
 
-export function BookGrid({ books, onReadBook, onDeleteBook }: BookGridProps) {
+export function BookGrid({ books, onReadBook, onBooksChange }: BookGridProps) {
+  const [deleteTarget, setDeleteTarget] = useState<DBBook | null>(null);
+  const [editTarget, setEditTarget] = useState<DBBook | null>(null);
+  const [folderTarget, setFolderTarget] = useState<DBBook | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [collections, setCollections] = useState<DBCollection[]>([]);
+
+  // Fetch collections for the dropdown
+  const loadCollections = useCallback(() => {
+    fetchCollections()
+      .then(setCollections)
+      .catch((err) =>
+        console.error("[BookGrid] Failed to load collections:", err)
+      );
+  }, []);
+
+  useEffect(() => {
+    loadCollections();
+  }, [loadCollections]);
+
+  const handleMoveToCollection = useCallback(
+    async (bookId: string, collectionId: string | null, bookTitle: string) => {
+      try {
+        await addBookToCollection(bookId, collectionId);
+        toast.success(
+          collectionId
+            ? `Moved "${bookTitle}" to collection`
+            : `Removed "${bookTitle}" from collection`
+        );
+        onBooksChange();
+      } catch (err) {
+        console.error("[BookGrid] Failed to move book:", err);
+        toast.error("Failed to move book");
+      }
+    },
+    [onBooksChange]
+  );
+
+  const handleToggleFavorite = useCallback(
+    async (book: DBBook) => {
+      try {
+        await toggleBookFavorite(book.id, !book.isFavorite);
+        toast.success(
+          book.isFavorite ? "Removed from favorites" : "Added to favorites"
+        );
+        onBooksChange();
+      } catch (err) {
+        console.error("[BookGrid] Failed to toggle favorite:", err);
+        toast.error("Failed to update favorite");
+      }
+    },
+    [onBooksChange]
+  );
+
+  const handleDownloadBook = useCallback(async (book: DBBook) => {
+    try {
+      if (!book.s3Key) {
+        toast.error("Download unavailable");
+        return;
+      }
+      toast.info("Preparing download...");
+      const { downloadUrl } = await getDownloadUrl(book.s3Key);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      const safeTitle = book.title.replace(/[^a-zA-Z0-9\s-]/g, "").trim();
+      link.download = `${safeTitle}.${book.format}`;
+      link.target = "_blank";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success("Download started");
+    } catch (err) {
+      console.error("[BookGrid] Failed to download book:", err);
+      toast.error("Failed to download book");
+    }
+  }, []);
+
+  const handleDeleteBook = useCallback(async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    try {
+      await deleteBook(deleteTarget.id);
+      toast.success(`Deleted "${deleteTarget.title}"`);
+      onBooksChange();
+      setDeleteTarget(null);
+    } catch (err) {
+      console.error("[BookGrid] Failed to delete book:", err);
+      toast.error("Failed to delete book");
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [deleteTarget, onBooksChange]);
+
   if (books.length === 0) {
     return (
       <div
@@ -50,103 +183,252 @@ export function BookGrid({ books, onReadBook, onDeleteBook }: BookGridProps) {
   }
 
   return (
-    <div
-      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
-      role="list"
-    >
-      {books.map((book) => {
-        const progress = calculateProgress(book.currentPage, book.totalPages);
+    <>
+      <div
+        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+        role="list"
+      >
+        {books.map((book) => {
+          const progress = calculateProgress(book.currentPage, book.totalPages);
 
-        return (
-          <article
-            key={book.id}
-            role="listitem"
-            className="group flex flex-col bg-card border border-border rounded-xl overflow-hidden hover:border-muted-foreground/30 transition-all cursor-pointer focus-within:ring-2 focus-within:ring-ring"
-            onClick={() => onReadBook(book)}
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                onReadBook(book);
-              }
-            }}
-          >
-            {/* Cover/Header */}
-            <div className="relative h-32">
-              <BookCover
-                coverUrl={book.coverUrl}
-                format={book.format}
-                title={book.title}
-                className="w-full h-full"
-                iconClassName="w-12 h-12"
-              />
-              {book.isFavorite && (
-                <div className="absolute top-2 left-2">
-                  <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
+          return (
+            <article
+              key={book.id}
+              role="listitem"
+              className="group flex flex-col bg-card border border-border rounded-xl overflow-hidden hover:border-muted-foreground/30 transition-all cursor-pointer focus-within:ring-2 focus-within:ring-ring"
+              onClick={() => onReadBook(book)}
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onReadBook(book);
+                }
+              }}
+            >
+              {/* Cover/Header */}
+              <div className="relative h-32">
+                <BookCover
+                  coverUrl={book.coverUrl}
+                  format={book.format}
+                  title={book.title}
+                  className="w-full h-full"
+                  iconClassName="w-12 h-12"
+                />
+                {book.isFavorite && (
+                  <div className="absolute top-2 left-2">
+                    <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
+                  </div>
+                )}
+                <div className="absolute top-2 right-2 flex gap-1">
+                  {(book.folderCount ?? 0) > 0 && (
+                    <MembershipBadge
+                      folderCount={book.folderCount}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity"
+                    />
+                  )}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      asChild
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 w-8 p-0 bg-background/80 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <MoreVertical className="w-4 h-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="end"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger>
+                          <FolderInput className="w-4 h-4 mr-2" />
+                          Move to Collection
+                        </DropdownMenuSubTrigger>
+                        <DropdownMenuSubContent>
+                          <DropdownMenuItem
+                            onClick={() =>
+                              handleMoveToCollection(book.id, null, book.title)
+                            }
+                          >
+                            <Folder className="w-4 h-4 mr-2" />
+                            <span className="flex-1">
+                              All Books (No Collection)
+                            </span>
+                            {!book.collectionId && (
+                              <Check className="w-4 h-4 ml-2 text-primary" />
+                            )}
+                          </DropdownMenuItem>
+                          {collections.length > 0 && <DropdownMenuSeparator />}
+                          {collections.map((collection) => (
+                            <DropdownMenuItem
+                              key={collection.id}
+                              onClick={() =>
+                                handleMoveToCollection(
+                                  book.id,
+                                  collection.id,
+                                  book.title
+                                )
+                              }
+                            >
+                              <div
+                                className="w-3 h-3 rounded-full mr-2"
+                                style={{ backgroundColor: collection.color }}
+                              />
+                              <span className="flex-1">{collection.name}</span>
+                              {book.collectionId === collection.id && (
+                                <Check className="w-4 h-4 ml-2 text-primary" />
+                              )}
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>
+                      <DropdownMenuItem onClick={() => setEditTarget(book)}>
+                        <Pencil className="w-4 h-4 mr-2" />
+                        Edit Book
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleToggleFavorite(book)}
+                      >
+                        <Star
+                          className={cn(
+                            "w-4 h-4 mr-2",
+                            book.isFavorite && "fill-current text-amber-500"
+                          )}
+                        />
+                        {book.isFavorite
+                          ? "Remove from Favorites"
+                          : "Add to Favorites"}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleDownloadBook(book)}
+                      >
+                        <Download className="w-4 h-4 mr-2" />
+                        Download Book
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setFolderTarget(book)}>
+                        <FolderPlus className="w-4 h-4 mr-2" />
+                        Add to Folder
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => setDeleteTarget(book)}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Delete Book
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
-              )}
-              <div className="absolute top-2 right-2 flex gap-1">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDeleteBook(book);
-                  }}
-                  className="h-8 w-8 p-0 bg-background/80 backdrop-blur-sm hover:bg-destructive/10 hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-                  aria-label={`Delete ${book.title}`}
+              </div>
+
+              {/* Content */}
+              <div className="flex-1 p-4 flex flex-col">
+                <h3
+                  className="font-semibold text-sm truncate"
+                  title={book.title}
                 >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-
-            {/* Content */}
-            <div className="flex-1 p-4 flex flex-col">
-              <h3 className="font-semibold text-sm truncate" title={book.title}>
-                {book.title}
-              </h3>
-              {book.author && (
-                <p className="text-xs text-muted-foreground truncate mt-0.5">
-                  {book.author}
-                </p>
-              )}
-
-              <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1">
-                  <HardDrive className="w-3 h-3" />
-                  {formatBytes(book.fileSize)}
-                </span>
-                {(book.notesCount ?? 0) > 0 && (
-                  <span className="flex items-center gap-1">
-                    <StickyNote className="w-3 h-3" />
-                    {book.notesCount}
-                  </span>
+                  {book.title}
+                </h3>
+                {book.author && (
+                  <p className="text-xs text-muted-foreground truncate mt-0.5">
+                    {book.author}
+                  </p>
                 )}
-                {(book.bookmarksCount ?? 0) > 0 && (
-                  <span className="flex items-center gap-1">
-                    <Bookmark className="w-3 h-3" />
-                    {book.bookmarksCount}
-                  </span>
-                )}
-              </div>
 
-              {/* Progress */}
-              <div className="mt-auto pt-3">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[10px] text-muted-foreground">
-                    {book.totalPages
-                      ? `${book.currentPage} / ${book.totalPages}`
-                      : "Not started"}
+                <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    <HardDrive className="w-3 h-3" />
+                    {formatBytes(book.fileSize)}
                   </span>
-                  <span className="text-[10px] font-medium">{progress}%</span>
+                  {(book.notesCount ?? 0) > 0 && (
+                    <span className="flex items-center gap-1">
+                      <StickyNote className="w-3 h-3" />
+                      {book.notesCount}
+                    </span>
+                  )}
+                  {(book.bookmarksCount ?? 0) > 0 && (
+                    <span className="flex items-center gap-1">
+                      <Bookmark className="w-3 h-3" />
+                      {book.bookmarksCount}
+                    </span>
+                  )}
                 </div>
-                <Progress value={progress} className="h-1" />
+
+                {/* Progress */}
+                <div className="mt-auto pt-3">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[10px] text-muted-foreground">
+                      {book.totalPages
+                        ? `${book.currentPage} / ${book.totalPages}`
+                        : "Not started"}
+                    </span>
+                    <span className="text-[10px] font-medium">{progress}%</span>
+                  </div>
+                  <Progress value={progress} className="h-1" />
+                </div>
               </div>
-            </div>
-          </article>
-        );
-      })}
-    </div>
+            </article>
+          );
+        })}
+      </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Book</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{deleteTarget?.title}"? This
+              action cannot be undone.
+              {deleteTarget && (
+                <DeleteConfirmationInfo
+                  itemType="book"
+                  itemId={deleteTarget.id}
+                  isFavorite={deleteTarget.isFavorite}
+                />
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteBook}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Edit Modal */}
+      <EditBookModal
+        book={editTarget}
+        open={!!editTarget}
+        onOpenChange={(open) => !open && setEditTarget(null)}
+        onBookUpdated={onBooksChange}
+      />
+
+      {/* Add to Folder Modal */}
+      {folderTarget && (
+        <AddToFolderModal
+          open={!!folderTarget}
+          onOpenChange={(open) => !open && setFolderTarget(null)}
+          itemId={folderTarget.id}
+          itemType="book"
+          itemTitle={folderTarget.title}
+          onSuccess={onBooksChange}
+        />
+      )}
+    </>
   );
 }

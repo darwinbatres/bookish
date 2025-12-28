@@ -1,4 +1,5 @@
 import { getPool } from "../pool";
+import { removeItemFromAllFolders } from "./media-folders";
 import type {
   DBAudioTrack,
   AudioFormat,
@@ -23,6 +24,8 @@ interface DBAudioTrackRow {
   completed_at: Date | null;
   is_favorite: boolean;
   bookmarks_count?: string;
+  folder_count?: string;
+  playlist_count?: string;
   added_at: Date;
   last_played_at: Date | null;
   created_at: Date;
@@ -79,6 +82,10 @@ function mapDBRowToAudioTrack(row: DBAudioTrackRow): DBAudioTrack {
     bookmarksCount: row.bookmarks_count
       ? parseInt(row.bookmarks_count, 10)
       : undefined,
+    folderCount: row.folder_count ? parseInt(row.folder_count, 10) : undefined,
+    playlistCount: row.playlist_count
+      ? parseInt(row.playlist_count, 10)
+      : undefined,
     addedAt: row.added_at.toISOString(),
     lastPlayedAt: row.last_played_at?.toISOString(),
     createdAt: row.created_at.toISOString(),
@@ -93,7 +100,9 @@ export async function getAllAudioTracks(): Promise<DBAudioTrack[]> {
   const result = await pool.query<DBAudioTrackRow>(
     `SELECT 
       a.*,
-      COUNT(DISTINCT ab.id)::text as bookmarks_count
+      COUNT(DISTINCT ab.id)::text as bookmarks_count,
+      (SELECT COUNT(*) FROM media_folder_items mfi WHERE mfi.item_id = a.id AND mfi.item_type = 'audio')::text as folder_count,
+      (SELECT COUNT(*) FROM playlist_items pi WHERE pi.track_id = a.id)::text as playlist_count
     FROM audio_tracks a
     LEFT JOIN audio_bookmarks ab ON ab.track_id = a.id
     GROUP BY a.id
@@ -179,7 +188,9 @@ export async function getAudioTracksWithPagination(
   const dataQuery = `
     SELECT 
       a.*,
-      COUNT(DISTINCT ab.id)::text as bookmarks_count
+      COUNT(DISTINCT ab.id)::text as bookmarks_count,
+      (SELECT COUNT(*) FROM media_folder_items mfi WHERE mfi.item_id = a.id AND mfi.item_type = 'audio')::text as folder_count,
+      (SELECT COUNT(*) FROM playlist_items pi WHERE pi.track_id = a.id)::text as playlist_count
     FROM audio_tracks a
     LEFT JOIN audio_bookmarks ab ON ab.track_id = a.id
     ${whereClause}
@@ -211,7 +222,9 @@ export async function getAudioTrackById(
   const result = await pool.query<DBAudioTrackRow>(
     `SELECT 
       a.*,
-      COUNT(DISTINCT ab.id)::text as bookmarks_count
+      COUNT(DISTINCT ab.id)::text as bookmarks_count,
+      (SELECT COUNT(*) FROM media_folder_items mfi WHERE mfi.item_id = a.id AND mfi.item_type = 'audio')::text as folder_count,
+      (SELECT COUNT(*) FROM playlist_items pi WHERE pi.track_id = a.id)::text as playlist_count
     FROM audio_tracks a
     LEFT JOIN audio_bookmarks ab ON ab.track_id = a.id
     WHERE a.id = $1
@@ -340,6 +353,10 @@ export async function addListeningTime(
 
 export async function deleteAudioTrack(id: string): Promise<string | null> {
   const pool = getPool();
+
+  // Remove from all folders first
+  await removeItemFromAllFolders("audio", id);
+
   const result = await pool.query<{ s3_key: string }>(
     `DELETE FROM audio_tracks WHERE id = $1 RETURNING s3_key`,
     [id]

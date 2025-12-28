@@ -5,6 +5,7 @@
  */
 
 import { getPool } from "../pool";
+import { removeItemFromAllFolders } from "./media-folders";
 import type {
   DBVideoTrack,
   VideoFormat,
@@ -28,6 +29,7 @@ interface DBVideoTrackRow {
   completed_at: Date | null;
   is_favorite: boolean;
   bookmarks_count?: string;
+  folder_count?: string;
   added_at: Date;
   last_played_at: Date | null;
   created_at: Date;
@@ -81,6 +83,7 @@ function mapDBRowToVideoTrack(row: DBVideoTrackRow): DBVideoTrack {
     bookmarksCount: row.bookmarks_count
       ? parseInt(row.bookmarks_count, 10)
       : undefined,
+    folderCount: row.folder_count ? parseInt(row.folder_count, 10) : undefined,
     addedAt: row.added_at.toISOString(),
     lastPlayedAt: row.last_played_at?.toISOString(),
     createdAt: row.created_at.toISOString(),
@@ -95,7 +98,8 @@ export async function getAllVideoTracks(): Promise<DBVideoTrack[]> {
   const result = await pool.query<DBVideoTrackRow>(
     `SELECT 
       v.*,
-      COUNT(DISTINCT vb.id)::text as bookmarks_count
+      COUNT(DISTINCT vb.id)::text as bookmarks_count,
+      (SELECT COUNT(*) FROM media_folder_items mfi WHERE mfi.item_id = v.id AND mfi.item_type = 'video')::text as folder_count
     FROM video_tracks v
     LEFT JOIN video_bookmarks vb ON vb.video_id = v.id
     GROUP BY v.id
@@ -179,7 +183,8 @@ export async function getVideoTracksWithPagination(
   const dataQuery = `
     SELECT 
       v.*,
-      COUNT(DISTINCT vb.id)::text as bookmarks_count
+      COUNT(DISTINCT vb.id)::text as bookmarks_count,
+      (SELECT COUNT(*) FROM media_folder_items mfi WHERE mfi.item_id = v.id AND mfi.item_type = 'video')::text as folder_count
     FROM video_tracks v
     LEFT JOIN video_bookmarks vb ON vb.video_id = v.id
     ${whereClause}
@@ -211,7 +216,8 @@ export async function getVideoTrackById(
   const result = await pool.query<DBVideoTrackRow>(
     `SELECT 
       v.*,
-      COUNT(DISTINCT vb.id)::text as bookmarks_count
+      COUNT(DISTINCT vb.id)::text as bookmarks_count,
+      (SELECT COUNT(*) FROM media_folder_items mfi WHERE mfi.item_id = v.id AND mfi.item_type = 'video')::text as folder_count
     FROM video_tracks v
     LEFT JOIN video_bookmarks vb ON vb.video_id = v.id
     WHERE v.id = $1
@@ -335,6 +341,10 @@ export async function addWatchingTime(
 
 export async function deleteVideoTrack(id: string): Promise<string | null> {
   const pool = getPool();
+
+  // Remove from all folders first
+  await removeItemFromAllFolders("video", id);
+
   const result = await pool.query<{ s3_key: string }>(
     `DELETE FROM video_tracks WHERE id = $1 RETURNING s3_key`,
     [id]

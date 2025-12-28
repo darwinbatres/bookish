@@ -63,6 +63,10 @@ export interface DBAudioTrack {
   completedAt?: string;
   isFavorite: boolean;
   bookmarksCount?: number;
+  /** Number of folders this track is in */
+  folderCount?: number;
+  /** Number of playlists this track is in */
+  playlistCount?: number;
   addedAt: string;
   lastPlayedAt?: string;
   createdAt: string;

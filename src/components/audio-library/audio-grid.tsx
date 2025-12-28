@@ -1,15 +1,27 @@
 import {
-  Heart,
   Play,
   Pause,
   HardDrive,
   Star,
   Bookmark,
   Music,
+  MoreVertical,
+  Edit,
+  Download,
+  FolderPlus,
+  Trash,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { AudioCover } from "@/components/audio-cover";
+import { MembershipBadge } from "@/components/membership-badge";
 import { cn } from "@/lib/utils";
 import { formatDuration } from "@/types/audio";
 import type { DBAudioTrack } from "@/types";
@@ -35,7 +47,11 @@ export function AudioGrid({
   isPlaying = false,
   onPlay,
   onPause,
+  onEdit,
+  onDelete,
+  onDownload,
   onToggleFavorite,
+  onAddToFolder,
 }: AudioGridProps) {
   if (tracks.length === 0) {
     return (
@@ -103,9 +119,95 @@ export function AudioGrid({
                 </div>
               )}
 
+              <div className="absolute top-2 right-2 flex gap-1 z-10">
+                {((track.folderCount ?? 0) > 0 ||
+                  (track.playlistCount ?? 0) > 0) && (
+                  <MembershipBadge
+                    folderCount={track.folderCount}
+                    playlistCount={track.playlistCount}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity"
+                  />
+                )}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 w-8 p-0 bg-background/80 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={(e) => e.stopPropagation()}
+                      onPointerDown={(e) => e.stopPropagation()}
+                    >
+                      <MoreVertical className="w-4 h-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="end"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEdit(track);
+                      }}
+                    >
+                      <Edit className="mr-2 h-4 w-4" />
+                      Edit Track
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleFavorite(track);
+                      }}
+                    >
+                      <Star
+                        className={cn(
+                          "mr-2 h-4 w-4",
+                          track.isFavorite && "fill-current text-amber-500"
+                        )}
+                      />
+                      {track.isFavorite
+                        ? "Remove from Favorites"
+                        : "Add to Favorites"}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDownload(track);
+                      }}
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      Download
+                    </DropdownMenuItem>
+                    {onAddToFolder && (
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onAddToFolder(track);
+                        }}
+                      >
+                        <FolderPlus className="mr-2 h-4 w-4" />
+                        Add to Folder
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDelete(track);
+                      }}
+                      className="text-destructive focus:text-destructive"
+                    >
+                      <Trash className="mr-2 h-4 w-4" />
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+
+              {/* Play/Pause overlay */}
               <div
                 className={cn(
-                  "absolute inset-0 flex items-center justify-center bg-black/40",
+                  "absolute inset-0 flex items-center justify-center bg-black/40 pointer-events-none",
                   "opacity-0 group-hover:opacity-100 transition-opacity",
                   isCurrentTrack && isPlaying && "opacity-100"
                 )}
@@ -116,28 +218,6 @@ export function AudioGrid({
                   <Play className="h-10 w-10 text-white" fill="white" />
                 )}
               </div>
-
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleFavorite(track);
-                }}
-                className="absolute top-2 right-2 h-8 w-8 p-0 bg-background/80 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity"
-                aria-label={
-                  track.isFavorite
-                    ? "Remove from favorites"
-                    : "Add to favorites"
-                }
-              >
-                <Heart
-                  className={cn(
-                    "w-4 h-4",
-                    track.isFavorite && "fill-amber-500 text-amber-500"
-                  )}
-                />
-              </Button>
             </div>
 
             <div className="flex-1 p-4 flex flex-col">

@@ -62,6 +62,8 @@ export interface DBVideoTrack {
   isFavorite: boolean;
   /** Number of bookmarks */
   bookmarksCount?: number;
+  /** Number of folders this video is in */
+  folderCount?: number;
   /** ISO timestamp when added */
   addedAt: string;
   /** ISO timestamp when last played */

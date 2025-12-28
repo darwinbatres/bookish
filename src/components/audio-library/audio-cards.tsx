@@ -11,10 +11,12 @@ import {
   Bookmark,
   HardDrive,
   FolderPlus,
+  Calendar,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { AudioCover } from "@/components/audio-cover";
+import { MembershipBadge } from "@/components/membership-badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -39,6 +41,20 @@ function formatBytes(bytes: number): string {
   const sizes = ["B", "KB", "MB", "GB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+}
+
+function formatRelativeDate(isoDate: string): string {
+  const date = new Date(isoDate);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return `${diffDays} days ago`;
+  if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
+  if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`;
+  return `${Math.floor(diffDays / 365)} years ago`;
 }
 
 export function AudioCards({
@@ -84,30 +100,49 @@ export function AudioCards({
             key={track.id}
             role="listitem"
             className={cn(
-              "group flex gap-4 bg-card border border-border rounded-xl p-4 hover:border-muted-foreground/30 transition-all",
+              "group flex bg-card border border-border rounded-xl overflow-hidden hover:border-muted-foreground/30 transition-all cursor-pointer focus-within:ring-2 focus-within:ring-ring",
               isCurrentTrack && "border-primary/50 bg-accent/30"
             )}
-          >
-            {/* Cover / Play Button */}
-            <div
-              className="relative shrink-0 w-24 h-24 rounded-lg overflow-hidden cursor-pointer"
-              onClick={() =>
-                isPlaying && isCurrentTrack ? onPause() : onPlay(track)
+            onClick={() =>
+              isPlaying && isCurrentTrack ? onPause() : onPlay(track)
+            }
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                if (isPlaying && isCurrentTrack) {
+                  onPause();
+                } else {
+                  onPlay(track);
+                }
               }
-            >
+            }}
+          >
+            {/* Cover side */}
+            <div className="w-24 sm:w-32 shrink-0 relative">
               <AudioCover
                 coverUrl={track.coverUrl}
                 title={track.title}
                 className="w-full h-full"
-                iconClassName="w-8 h-8"
+                iconClassName="w-10 h-10"
               />
 
               {track.isFavorite && (
-                <div className="absolute top-1.5 left-1.5">
-                  <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+                <div className="absolute top-2 left-2">
+                  <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
                 </div>
               )}
 
+              {((track.folderCount ?? 0) > 0 ||
+                (track.playlistCount ?? 0) > 0) && (
+                <MembershipBadge
+                  folderCount={track.folderCount}
+                  playlistCount={track.playlistCount}
+                  className="absolute top-2 right-2"
+                />
+              )}
+
+              {/* Play overlay */}
               <div
                 className={cn(
                   "absolute inset-0 flex items-center justify-center bg-black/40",
@@ -124,9 +159,9 @@ export function AudioCards({
             </div>
 
             {/* Content */}
-            <div className="flex-1 min-w-0 flex flex-col">
+            <div className="flex-1 p-4 flex flex-col min-w-0">
               <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <h3
                     className="font-semibold text-sm truncate"
                     title={track.title}
@@ -138,68 +173,83 @@ export function AudioCards({
                       {track.artist}
                     </p>
                   )}
-                  {track.album && (
-                    <p className="text-xs text-muted-foreground/70 truncate">
-                      {track.album}
-                    </p>
-                  )}
                 </div>
 
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => onToggleFavorite(track)}
-                    className="h-8 w-8 p-0"
-                    aria-label={
-                      track.isFavorite
-                        ? "Remove from favorites"
-                        : "Add to favorites"
-                    }
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    asChild
+                    onClick={(e) => e.stopPropagation()}
                   >
-                    <Heart
-                      className={cn(
-                        "w-4 h-4",
-                        track.isFavorite && "fill-amber-500 text-amber-500"
-                      )}
-                    />
-                  </Button>
-
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
-                        <MoreVertical className="w-4 h-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => onEdit(track)}>
-                        <Edit className="w-4 h-4 mr-2" />
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => onDownload(track)}>
-                        <Download className="w-4 h-4 mr-2" />
-                        Download
-                      </DropdownMenuItem>
-                      {onAddToFolder && (
-                        <DropdownMenuItem onClick={() => onAddToFolder(track)}>
-                          <FolderPlus className="w-4 h-4 mr-2" />
-                          Add to Folder
-                        </DropdownMenuItem>
-                      )}
-                      <DropdownMenuSeparator />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 w-8 p-0 -mt-1 -mr-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                    >
+                      <MoreVertical className="w-4 h-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEdit(track);
+                      }}
+                    >
+                      <Edit className="w-4 h-4 mr-2" />
+                      Edit Track
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleFavorite(track);
+                      }}
+                    >
+                      <Star
+                        className={cn(
+                          "w-4 h-4 mr-2",
+                          track.isFavorite && "fill-current text-amber-500"
+                        )}
+                      />
+                      {track.isFavorite
+                        ? "Remove from Favorites"
+                        : "Add to Favorites"}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDownload(track);
+                      }}
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      Download
+                    </DropdownMenuItem>
+                    {onAddToFolder && (
                       <DropdownMenuItem
-                        onClick={() => onDelete(track)}
-                        className="text-destructive focus:text-destructive"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onAddToFolder(track);
+                        }}
                       >
-                        <Trash className="w-4 h-4 mr-2" />
-                        Delete
+                        <FolderPlus className="w-4 h-4 mr-2" />
+                        Add to Folder
                       </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
+                    )}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDelete(track);
+                      }}
+                      className="text-destructive focus:text-destructive"
+                    >
+                      <Trash className="w-4 h-4 mr-2" />
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
 
-              <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                 <span className="flex items-center gap-1">
                   <HardDrive className="w-3 h-3" />
                   {formatBytes(track.fileSize)}
@@ -210,23 +260,22 @@ export function AudioCards({
                     {track.bookmarksCount}
                   </span>
                 )}
-                <span className="ml-auto">
-                  {track.durationSeconds
-                    ? formatDuration(track.durationSeconds)
-                    : "--:--"}
+                <span className="flex items-center gap-1">
+                  <Calendar className="w-3 h-3" />
+                  {formatRelativeDate(track.updatedAt)}
                 </span>
               </div>
 
-              <div className="mt-auto pt-2">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-[10px] text-muted-foreground">
-                    {track.durationSeconds
-                      ? `${formatDuration(track.currentPosition)} / ${formatDuration(track.durationSeconds)}`
-                      : "Not started"}
-                  </span>
-                  <span className="text-[10px] font-medium">{progress}%</span>
+              {/* Progress */}
+              <div className="mt-auto pt-3 flex items-center gap-3">
+                <div className="flex-1">
+                  <Progress value={progress} className="h-1.5" />
                 </div>
-                <Progress value={progress} className="h-1" />
+                <span className="text-xs font-medium w-16 text-right">
+                  {track.durationSeconds
+                    ? `${formatDuration(track.currentPosition)}/${formatDuration(track.durationSeconds)}`
+                    : "0%"}
+                </span>
               </div>
             </div>
           </article>

@@ -5,6 +5,7 @@ import { AudioTrackCard } from "./audio-track-card";
 import { AudioUpload } from "./audio-upload";
 import { AudioEditModal } from "./audio-edit-modal";
 import { AddToFolderModal } from "@/components/add-to-folder-modal";
+import { DeleteConfirmationInfo } from "./delete-confirmation-info";
 import { SearchInput, PaginationControls } from "./library";
 import {
   AudioGrid,
@@ -280,6 +281,7 @@ export function AudioLibraryView({
                   onDelete={setDeleteTarget}
                   onDownload={handleDownload}
                   onToggleFavorite={handleToggleFavorite}
+                  onRefresh={loadTracks}
                 />
               ))}
             </div>
@@ -294,6 +296,7 @@ export function AudioLibraryView({
               onDelete={setDeleteTarget}
               onDownload={handleDownload}
               onToggleFavorite={handleToggleFavorite}
+              onAddToFolder={setFolderTarget}
             />
           ) : viewMode === "cards" ? (
             <AudioCards
@@ -347,9 +350,21 @@ export function AudioLibraryView({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete audio track?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete &ldquo;{deleteTarget?.title}&rdquo;
-              and remove it from all playlists. This action cannot be undone.
+            <AlertDialogDescription asChild>
+              <div>
+                <p>
+                  This will permanently delete &ldquo;{deleteTarget?.title}
+                  &rdquo; and remove it from all playlists. This action cannot
+                  be undone.
+                </p>
+                {deleteTarget && (
+                  <DeleteConfirmationInfo
+                    itemType="audio"
+                    itemId={deleteTarget.id}
+                    isFavorite={deleteTarget.isFavorite}
+                  />
+                )}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -386,6 +401,7 @@ export function AudioLibraryView({
         itemId={folderTarget?.id || ""}
         itemType="audio"
         itemTitle={folderTarget?.title || ""}
+        onSuccess={loadTracks}
       />
     </div>
   );

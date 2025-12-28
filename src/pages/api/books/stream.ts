@@ -66,7 +66,7 @@ async function handler(
     const { s3Key } = result.data;
 
     // Security: Validate s3Key format to prevent directory traversal
-    // Allow books/*, covers/*, audio/*, audio-covers/*, video/*, and video-covers/* paths
+    // Allow books/*, covers/*, audio/*, audio-covers/*, video/*, video-covers/*, and folder-covers/* paths
     const isValidPath =
       !s3Key.includes("..") &&
       (s3Key.startsWith("books/") ||
@@ -74,7 +74,8 @@ async function handler(
         s3Key.startsWith("audio/") ||
         s3Key.startsWith("audio-covers/") ||
         s3Key.startsWith("video/") ||
-        s3Key.startsWith("video-covers/"));
+        s3Key.startsWith("video-covers/") ||
+        s3Key.startsWith("folder-covers/"));
 
     if (!isValidPath) {
       return res.status(400).json({

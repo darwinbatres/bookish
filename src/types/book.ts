@@ -72,6 +72,8 @@ export interface DBBook {
   notesCount?: number;
   /** Number of bookmarks for this book */
   bookmarksCount?: number;
+  /** Number of folders this book is in */
+  folderCount?: number;
   /** ISO timestamp when the book was added */
   createdAt: string;
   /** ISO timestamp when the book was last updated */

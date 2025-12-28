@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import {
   Folder,
@@ -12,14 +12,16 @@ import {
   ArrowLeft,
   FileText,
   Play,
-  LayoutGrid,
-  LayoutList,
-  List,
-  CreditCard,
   X,
   Save,
   Filter,
   ChevronDown,
+  Upload,
+  ImageIcon,
+  Clipboard,
+  Plus,
+  HardDrive,
+  Calendar,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,6 +52,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Progress } from "@/components/ui/progress";
 import {
   fetchMediaFoldersPaginated,
   createMediaFolder,
@@ -59,11 +62,19 @@ import {
   removeItemFromMediaFolder,
   getAudioStreamUrl,
   getVideoStreamUrl,
+  getDownloadUrl,
+  uploadMediaFolderCover,
 } from "@/lib/api/client";
 import { BookCover } from "@/components/book-cover";
 import { AudioCover } from "@/components/audio-cover";
 import { VideoCover } from "@/components/video-cover";
-import { SearchInput, PaginationControls } from "@/components/library";
+import { FolderCover } from "@/components/folder-cover";
+import { FolderUpload } from "@/components/folder-upload";
+import {
+  SearchInput,
+  PaginationControls,
+  ViewModeSwitcher,
+} from "@/components/library";
 import type {
   DBMediaFolder,
   DBMediaFolderItemWithDetails,
@@ -71,6 +82,7 @@ import type {
   DBAudioTrack,
   DBVideoTrack,
   BookFormat,
+  LibraryViewMode,
 } from "@/types";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -81,9 +93,6 @@ const MDPreview = dynamic(
   () => import("@uiw/react-md-editor").then((mod) => mod.default.Markdown),
   { ssr: false }
 );
-
-// View modes for folder items and folder list (matching library)
-type ViewMode = "list" | "grid" | "cards" | "compact";
 
 // LocalStorage keys for persistent preferences
 const PAGE_SIZE_KEY = "bookish-library-page-size";
@@ -96,20 +105,20 @@ function getStoredPageSize(): number {
   return stored ? parseInt(stored, 10) : 20;
 }
 
-function getStoredFoldersViewMode(): ViewMode {
+function getStoredFoldersViewMode(): LibraryViewMode {
   if (typeof window === "undefined") return "list";
   const stored = localStorage.getItem(FOLDERS_VIEW_MODE_KEY);
   if (stored && ["list", "grid", "cards", "compact"].includes(stored)) {
-    return stored as ViewMode;
+    return stored as LibraryViewMode;
   }
   return "list";
 }
 
-function getStoredItemsViewMode(): ViewMode {
+function getStoredItemsViewMode(): LibraryViewMode {
   if (typeof window === "undefined") return "list";
   const stored = localStorage.getItem(FOLDER_ITEMS_VIEW_MODE_KEY);
   if (stored && ["list", "grid", "cards", "compact"].includes(stored)) {
-    return stored as ViewMode;
+    return stored as LibraryViewMode;
   }
   return "list";
 }
@@ -164,12 +173,12 @@ export function MediaFoldersView({
   >("all");
 
   // View mode for folder items (persisted)
-  const [itemViewMode, setItemViewMode] = useState<ViewMode>(
+  const [itemViewMode, setItemViewMode] = useState<LibraryViewMode>(
     getStoredItemsViewMode
   );
 
   // View mode for folders list (persisted)
-  const [foldersViewMode, setFoldersViewMode] = useState<ViewMode>(
+  const [foldersViewMode, setFoldersViewMode] = useState<LibraryViewMode>(
     getStoredFoldersViewMode
   );
 
@@ -187,12 +196,12 @@ export function MediaFoldersView({
     useState<DBMediaFolderItemWithDetails | null>(null);
 
   // View mode change handlers (persist to localStorage)
-  const handleFoldersViewModeChange = useCallback((mode: ViewMode) => {
+  const handleFoldersViewModeChange = useCallback((mode: LibraryViewMode) => {
     setFoldersViewMode(mode);
     localStorage.setItem(FOLDERS_VIEW_MODE_KEY, mode);
   }, []);
 
-  const handleItemsViewModeChange = useCallback((mode: ViewMode) => {
+  const handleItemsViewModeChange = useCallback((mode: LibraryViewMode) => {
     setItemViewMode(mode);
     localStorage.setItem(FOLDER_ITEMS_VIEW_MODE_KEY, mode);
   }, []);
@@ -214,6 +223,35 @@ export function MediaFoldersView({
   const [formName, setFormName] = useState("");
   const [formDescription, setFormDescription] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+
+  // Cover image state for edit modal
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [coverPreview, setCoverPreview] = useState<string | null>(null);
+  const [existingCoverUrl, setExistingCoverUrl] = useState<string | null>(null);
+  const [isUploadingCover, setIsUploadingCover] = useState(false);
+  const [removeCover, setRemoveCover] = useState(false);
+  const [maxCoverSizeMB, setMaxCoverSizeMB] = useState(5);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const ALLOWED_IMAGE_TYPES = [
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+  ];
+  const maxCoverSize = maxCoverSizeMB * 1024 * 1024;
+
+  // Fetch cover max size from settings
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((res) => res.json())
+      .then((settings) => {
+        if (settings.cover?.maxSizeMB) {
+          setMaxCoverSizeMB(settings.cover.maxSizeMB);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const loadFolders = useCallback(async () => {
     try {
@@ -303,8 +341,10 @@ export function MediaFoldersView({
       setShowCreateModal(false);
       setFormName("");
       setFormDescription("");
-      // Reset to first page to show the new folder (sorted by name)
+      // Reset to first page and reload to show the new folder
       setFoldersPage(1);
+      // Force reload the folders list
+      await loadFolders();
     } catch (error) {
       console.error("Failed to create folder:", error);
       toast.error("Failed to create folder");
@@ -317,13 +357,37 @@ export function MediaFoldersView({
     if (!editFolder || !formName.trim()) return;
     setIsSaving(true);
     try {
+      let newCoverUrl: string | undefined = undefined;
+
+      // Handle cover upload
+      if (coverFile) {
+        setIsUploadingCover(true);
+        try {
+          const s3Key = await uploadMediaFolderCover(editFolder.id, coverFile);
+          newCoverUrl = s3Key;
+        } catch (error) {
+          console.error("[MediaFolders] Failed to upload cover:", error);
+          toast.error("Failed to upload cover image");
+          setIsUploadingCover(false);
+          setIsSaving(false);
+          return;
+        }
+        setIsUploadingCover(false);
+      } else if (removeCover) {
+        newCoverUrl = "";
+      }
+
       const updated = await updateMediaFolder(editFolder.id, {
         name: formName.trim(),
         description: formDescription.trim() || undefined,
+        ...(newCoverUrl !== undefined && {
+          coverUrl: newCoverUrl || undefined,
+        }),
       });
-      setFolders((prev) =>
-        prev.map((f) => (f.id === updated.id ? updated : f))
-      );
+
+      // Force reload to get fresh data including cover URL
+      await loadFolders();
+
       if (selectedFolder?.id === updated.id) {
         setSelectedFolder(updated);
       }
@@ -331,6 +395,10 @@ export function MediaFoldersView({
       setEditFolder(null);
       setFormName("");
       setFormDescription("");
+      setCoverFile(null);
+      setCoverPreview(null);
+      setExistingCoverUrl(null);
+      setRemoveCover(false);
     } catch (error) {
       console.error("Failed to update folder:", error);
       toast.error("Failed to update folder");
@@ -365,7 +433,95 @@ export function MediaFoldersView({
     setEditFolder(folder);
     setFormName(folder.name);
     setFormDescription(folder.description || "");
+    setCoverFile(null);
+    setCoverPreview(null);
+    setRemoveCover(false);
+
+    // Load existing cover
+    if (folder.coverUrl) {
+      if (folder.coverUrl.startsWith("folder-covers/")) {
+        getDownloadUrl(folder.coverUrl)
+          .then(({ downloadUrl }) => setExistingCoverUrl(downloadUrl))
+          .catch(() => setExistingCoverUrl(null));
+      } else {
+        setExistingCoverUrl(folder.coverUrl);
+      }
+    } else {
+      setExistingCoverUrl(null);
+    }
   };
+
+  // Cover image handlers for edit modal
+  const processImageFile = useCallback(
+    (file: File) => {
+      if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+        toast.error("Invalid file type", {
+          description: "Please select a JPEG, PNG, WebP, or GIF image.",
+        });
+        return;
+      }
+
+      if (file.size > maxCoverSize) {
+        toast.error("File too large", {
+          description: `Cover image must be less than ${maxCoverSizeMB}MB.`,
+        });
+        return;
+      }
+
+      setCoverFile(file);
+      setRemoveCover(false);
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setCoverPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    },
+    [maxCoverSize, maxCoverSizeMB, ALLOWED_IMAGE_TYPES]
+  );
+
+  const handleCoverFileChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      processImageFile(file);
+    },
+    [processImageFile]
+  );
+
+  const handleRemoveCover = useCallback(() => {
+    setCoverFile(null);
+    setCoverPreview(null);
+    setRemoveCover(true);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  }, []);
+
+  // Global paste handler for cover image (only when edit modal is open)
+  useEffect(() => {
+    if (!editFolder) return;
+
+    const handleGlobalPaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (const item of items) {
+        if (item.type.startsWith("image/")) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          if (file) {
+            processImageFile(file);
+            toast.success("Image pasted from clipboard");
+          }
+          return;
+        }
+      }
+    };
+
+    document.addEventListener("paste", handleGlobalPaste);
+    return () => document.removeEventListener("paste", handleGlobalPaste);
+  }, [editFolder, processImageFile]);
 
   const getItemIcon = (type: string) => {
     switch (type) {
@@ -528,70 +684,42 @@ export function MediaFoldersView({
                       {search && ` matching "${search}"`}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {/* View mode switcher */}
-                    <div className="flex items-center border border-border rounded-lg p-0.5 bg-background">
-                      <Button
-                        variant={
-                          foldersViewMode === "list" ? "secondary" : "ghost"
-                        }
-                        size="sm"
-                        className="h-7 w-7 p-0"
-                        onClick={() => handleFoldersViewModeChange("list")}
-                        title="List view"
-                      >
-                        <LayoutList className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant={
-                          foldersViewMode === "grid" ? "secondary" : "ghost"
-                        }
-                        size="sm"
-                        className="h-7 w-7 p-0"
-                        onClick={() => handleFoldersViewModeChange("grid")}
-                        title="Grid view"
-                      >
-                        <LayoutGrid className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant={
-                          foldersViewMode === "cards" ? "secondary" : "ghost"
-                        }
-                        size="sm"
-                        className="h-7 w-7 p-0"
-                        onClick={() => handleFoldersViewModeChange("cards")}
-                        title="Card view"
-                      >
-                        <CreditCard className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant={
-                          foldersViewMode === "compact" ? "secondary" : "ghost"
-                        }
-                        size="sm"
-                        className="h-7 w-7 p-0"
-                        onClick={() => handleFoldersViewModeChange("compact")}
-                        title="Compact view"
-                      >
-                        <List className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
                 </div>
 
+                {/* Search and view controls */}
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                   <SearchInput
                     value={search}
                     onChange={setSearch}
                     placeholder="Search folders..."
                   />
-                  <Button
-                    onClick={() => setShowCreateModal(true)}
-                    className="shrink-0"
-                  >
-                    <FolderPlus className="w-4 h-4 mr-2" />
-                    New Folder
-                  </Button>
+                  <ViewModeSwitcher
+                    currentMode={foldersViewMode}
+                    onChange={handleFoldersViewModeChange}
+                  />
+                </div>
+              </div>
+
+              {/* New Folder Button - matching upload section pattern */}
+              <div className="mb-6 sm:mb-8">
+                <div
+                  className="border-2 border-dashed border-border rounded-xl p-4 sm:p-6 transition-colors hover:border-muted-foreground/40 cursor-pointer bg-card/50"
+                  onClick={() => setShowCreateModal(true)}
+                >
+                  <div className="flex items-center gap-3 sm:gap-4">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-primary flex items-center justify-center shrink-0">
+                      <Plus className="w-5 h-5 sm:w-6 sm:h-6 text-primary-foreground" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm sm:text-base font-semibold text-foreground">
+                        New Folder
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Create a folder to organize your books, audio, and
+                        videos
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </>
@@ -622,44 +750,10 @@ export function MediaFoldersView({
                 </div>
 
                 {/* View mode switcher */}
-                <div className="flex items-center border border-border rounded-lg p-0.5 bg-background shrink-0">
-                  <Button
-                    variant={itemViewMode === "list" ? "secondary" : "ghost"}
-                    size="sm"
-                    className="h-7 w-7 p-0"
-                    onClick={() => handleItemsViewModeChange("list")}
-                    title="List view"
-                  >
-                    <LayoutList className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant={itemViewMode === "grid" ? "secondary" : "ghost"}
-                    size="sm"
-                    className="h-7 w-7 p-0"
-                    onClick={() => handleItemsViewModeChange("grid")}
-                    title="Grid view"
-                  >
-                    <LayoutGrid className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant={itemViewMode === "cards" ? "secondary" : "ghost"}
-                    size="sm"
-                    className="h-7 w-7 p-0"
-                    onClick={() => handleItemsViewModeChange("cards")}
-                    title="Card view"
-                  >
-                    <CreditCard className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant={itemViewMode === "compact" ? "secondary" : "ghost"}
-                    size="sm"
-                    className="h-7 w-7 p-0"
-                    onClick={() => handleItemsViewModeChange("compact")}
-                    title="Compact view"
-                  >
-                    <List className="h-4 w-4" />
-                  </Button>
-                </div>
+                <ViewModeSwitcher
+                  currentMode={itemViewMode}
+                  onChange={handleItemsViewModeChange}
+                />
               </div>
 
               {/* Notes Section - Collapsible */}
@@ -759,75 +853,93 @@ export function MediaFoldersView({
               </div>
 
               {/* Filter Bar & Item Count */}
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
-                <div className="flex items-center gap-2">
-                  <Filter className="w-4 h-4 text-muted-foreground" />
-                  <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
-                    <Button
-                      variant={filterType === "all" ? "secondary" : "ghost"}
-                      size="sm"
-                      className="h-7 px-2 text-xs"
-                      onClick={() => setFilterType("all")}
-                    >
-                      All
-                    </Button>
-                    <Button
-                      variant={filterType === "book" ? "secondary" : "ghost"}
-                      size="sm"
-                      className="h-7 px-2 text-xs"
-                      onClick={() => setFilterType("book")}
-                    >
-                      <BookOpen className="w-3 h-3 mr-1" />
-                      Books
-                    </Button>
-                    <Button
-                      variant={filterType === "audio" ? "secondary" : "ghost"}
-                      size="sm"
-                      className="h-7 px-2 text-xs"
-                      onClick={() => setFilterType("audio")}
-                    >
-                      <Music className="w-3 h-3 mr-1" />
-                      Audio
-                    </Button>
-                    <Button
-                      variant={filterType === "video" ? "secondary" : "ghost"}
-                      size="sm"
-                      className="h-7 px-2 text-xs"
-                      onClick={() => setFilterType("video")}
-                    >
-                      <Video className="w-3 h-3 mr-1" />
-                      Video
-                    </Button>
+              <div className="flex flex-col gap-3 mb-4">
+                {/* Upload Button - full width on mobile */}
+                <FolderUpload
+                  folderId={selectedFolder.id}
+                  onItemAdded={() => loadFolderItems(selectedFolder.id)}
+                  compact
+                />
+
+                {/* Filters and count row */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto">
+                    <Filter className="w-4 h-4 text-muted-foreground shrink-0" />
+                    <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
+                      <Button
+                        variant={filterType === "all" ? "secondary" : "ghost"}
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => setFilterType("all")}
+                      >
+                        All
+                      </Button>
+                      <Button
+                        variant={filterType === "book" ? "secondary" : "ghost"}
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => setFilterType("book")}
+                      >
+                        <BookOpen className="w-3 h-3 mr-1" />
+                        Books
+                      </Button>
+                      <Button
+                        variant={filterType === "audio" ? "secondary" : "ghost"}
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => setFilterType("audio")}
+                      >
+                        <Music className="w-3 h-3 mr-1" />
+                        Audio
+                      </Button>
+                      <Button
+                        variant={filterType === "video" ? "secondary" : "ghost"}
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => setFilterType("video")}
+                      >
+                        <Video className="w-3 h-3 mr-1" />
+                        Video
+                      </Button>
+                    </div>
                   </div>
+                  {itemsTotalCount > 0 && (
+                    <p className="text-sm text-muted-foreground">
+                      Showing {(itemsPage - 1) * itemsLimit + 1}-
+                      {Math.min(itemsPage * itemsLimit, itemsTotalCount)} of{" "}
+                      {itemsTotalCount} items
+                    </p>
+                  )}
                 </div>
-                {itemsTotalCount > 0 && (
-                  <p className="text-sm text-muted-foreground">
-                    Showing {(itemsPage - 1) * itemsLimit + 1}-
-                    {Math.min(itemsPage * itemsLimit, itemsTotalCount)} of{" "}
-                    {itemsTotalCount} items
-                  </p>
-                )}
               </div>
 
               {/* Folder Items */}
               {loadingItems ? (
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                   {[1, 2, 3, 4].map((i) => (
-                    <Skeleton key={i} className="aspect-[3/4] rounded-lg" />
+                    <Skeleton key={i} className="aspect-3/4 rounded-lg" />
                   ))}
                 </div>
               ) : folderItems.length === 0 ? (
-                <div className="text-center py-12 text-muted-foreground border rounded-lg bg-card">
-                  <Folder className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>This folder is empty.</p>
-                  <p className="text-sm mt-1">
-                    Add items from your library using the &ldquo;Add to
-                    Folder&rdquo; option.
+                <div className="flex flex-col items-center justify-center py-16 px-6 border-2 border-dashed rounded-xl bg-card/50">
+                  <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
+                    <Upload className="h-8 w-8 text-muted-foreground/60" />
+                  </div>
+                  <h3 className="font-semibold text-lg text-foreground mb-1">
+                    This folder is empty
+                  </h3>
+                  <p className="text-sm text-muted-foreground mb-6 text-center max-w-sm">
+                    Upload files directly or add existing items from your
+                    library.
                   </p>
+                  <FolderUpload
+                    folderId={selectedFolder.id}
+                    onItemAdded={() => loadFolderItems(selectedFolder.id)}
+                  />
                 </div>
               ) : itemViewMode === "grid" ? (
                 /* Grid View */
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                   {folderItems.map((item) => (
                     <div
                       key={item.id}
@@ -835,7 +947,7 @@ export function MediaFoldersView({
                       onClick={() => handleItemClick(item)}
                     >
                       {/* Cover */}
-                      <div className="relative aspect-[3/4]">
+                      <div className="relative aspect-3/4">
                         {item.itemType === "book" && (
                           <BookCover
                             coverUrl={item.itemCoverUrl}
@@ -907,102 +1019,165 @@ export function MediaFoldersView({
                   ))}
                 </div>
               ) : itemViewMode === "list" ? (
-                /* List View */
-                <div className="space-y-2">
-                  {folderItems.map((item) => (
-                    <div
-                      key={item.id}
-                      className="group flex items-center gap-4 p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors cursor-pointer"
-                      onClick={() => handleItemClick(item)}
-                    >
-                      {/* Cover thumbnail */}
-                      <div className="relative w-14 h-14 shrink-0 rounded overflow-hidden">
-                        {item.itemType === "book" && (
-                          <BookCover
-                            coverUrl={item.itemCoverUrl}
-                            format={(item.itemFormat as BookFormat) || "pdf"}
-                            title={item.itemTitle || "Untitled"}
-                            className="w-full h-full"
-                            iconClassName="h-5 w-5"
-                          />
-                        )}
-                        {item.itemType === "audio" && (
-                          <AudioCover
-                            coverUrl={item.itemCoverUrl}
-                            title={item.itemTitle || "Untitled"}
-                            className="w-full h-full"
-                            iconClassName="h-5 w-5"
-                          />
-                        )}
-                        {item.itemType === "video" && (
-                          <VideoCover
-                            coverUrl={item.itemCoverUrl}
-                            title={item.itemTitle || "Untitled"}
-                            className="w-full h-full"
-                            iconClassName="h-5 w-5"
-                          />
-                        )}
-                        {/* Play overlay */}
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                          <Play className="h-5 w-5 text-white" fill="white" />
+                /* List View - matching BookTable style */
+                <div
+                  className="space-y-2 sm:space-y-3"
+                  role="list"
+                  aria-label="Items in folder"
+                >
+                  {folderItems.map((item) => {
+                    const progress =
+                      item.itemProgress && item.itemTotal && item.itemTotal > 0
+                        ? Math.round((item.itemProgress / item.itemTotal) * 100)
+                        : 0;
+
+                    return (
+                      <article
+                        key={item.id}
+                        role="listitem"
+                        className="group flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl bg-card border border-border hover:border-muted-foreground/30 active:bg-secondary/30 transition-all cursor-pointer focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
+                        onClick={() => handleItemClick(item)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            handleItemClick(item);
+                          }
+                        }}
+                        tabIndex={0}
+                      >
+                        {/* Cover thumbnail - hidden on mobile */}
+                        <div className="w-12 h-12 rounded-lg shrink-0 hidden sm:flex overflow-hidden">
+                          {item.itemType === "book" && (
+                            <BookCover
+                              coverUrl={item.itemCoverUrl}
+                              format={(item.itemFormat as BookFormat) || "pdf"}
+                              title={item.itemTitle || "Untitled"}
+                              className="w-full h-full"
+                              iconClassName="w-5 h-5"
+                            />
+                          )}
+                          {item.itemType === "audio" && (
+                            <AudioCover
+                              coverUrl={item.itemCoverUrl}
+                              title={item.itemTitle || "Untitled"}
+                              className="w-full h-full"
+                              iconClassName="w-5 h-5"
+                            />
+                          )}
+                          {item.itemType === "video" && (
+                            <VideoCover
+                              coverUrl={item.itemCoverUrl}
+                              title={item.itemTitle || "Untitled"}
+                              className="w-full h-full"
+                              iconClassName="w-5 h-5"
+                            />
+                          )}
                         </div>
-                      </div>
-                      {/* Info */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          {getItemIcon(item.itemType)}
-                          <p className="font-medium truncate">
-                            {item.itemTitle || "Untitled"}
-                          </p>
-                        </div>
-                        {item.itemAuthor && (
-                          <p className="text-sm text-muted-foreground truncate">
-                            {item.itemAuthor}
-                          </p>
-                        )}
-                      </div>
-                      {/* Progress indicator */}
-                      {item.itemProgress &&
-                        item.itemTotal &&
-                        item.itemTotal > 0 && (
-                          <div className="hidden sm:block text-right text-sm text-muted-foreground">
-                            {Math.round(
-                              (item.itemProgress / item.itemTotal) * 100
+
+                        {/* Item info */}
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-semibold text-sm text-foreground truncate pr-2 flex items-center gap-1.5">
+                            {getItemIcon(item.itemType)}
+                            <span className="truncate">
+                              {item.itemTitle || "Untitled"}
+                            </span>
+                          </h3>
+                          {item.itemAuthor && (
+                            <p className="text-xs text-muted-foreground truncate mt-0.5">
+                              {item.itemAuthor}
+                            </p>
+                          )}
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5">
+                            <span className="text-xs text-muted-foreground uppercase font-medium">
+                              {item.itemType.toUpperCase()}
+                            </span>
+                            {item.itemFormat && (
+                              <>
+                                <span className="text-muted-foreground/40">
+                                  •
+                                </span>
+                                <span className="text-xs text-muted-foreground uppercase">
+                                  {item.itemFormat}
+                                </span>
+                              </>
                             )}
-                            %
                           </div>
-                        )}
-                      {/* Actions */}
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="shrink-0"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setRemoveItemTarget(item);
-                            }}
-                            className="text-destructive focus:text-destructive"
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Remove from Folder
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  ))}
+                        </div>
+
+                        <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4">
+                          {/* Progress bar */}
+                          <div className="flex items-center gap-2 sm:gap-3 flex-1 sm:flex-initial sm:w-32">
+                            <div
+                              className="flex-1 sm:flex-initial sm:w-20 h-1.5 sm:h-1 bg-secondary rounded-full overflow-hidden"
+                              role="progressbar"
+                              aria-valuenow={progress}
+                              aria-valuemin={0}
+                              aria-valuemax={100}
+                              aria-label={`Progress: ${progress}%`}
+                            >
+                              <div
+                                className="h-full bg-foreground/70 rounded-full transition-all duration-300"
+                                style={{ width: `${progress}%` }}
+                              />
+                            </div>
+                            <span className="text-[10px] sm:text-xs font-medium text-muted-foreground w-8 text-right">
+                              {progress}%
+                            </span>
+                          </div>
+
+                          {/* Actions */}
+                          <div className="flex items-center gap-1">
+                            <Button
+                              size="sm"
+                              variant="default"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleItemClick(item);
+                              }}
+                              className="h-9 sm:h-8 px-4 sm:px-3 text-xs font-semibold"
+                            >
+                              {item.itemType === "book"
+                                ? "Read"
+                                : item.itemType === "audio"
+                                  ? "Play"
+                                  : "Watch"}
+                            </Button>
+
+                            {/* More actions dropdown */}
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="h-9 sm:h-8 w-9 sm:w-8 p-0 sm:opacity-0 sm:group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-all"
+                                  aria-label={`More options for ${item.itemTitle}`}
+                                >
+                                  <MoreVertical className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent
+                                align="end"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <DropdownMenuItem
+                                  onClick={() => setRemoveItemTarget(item)}
+                                  className="text-destructive focus:text-destructive"
+                                >
+                                  <Trash2 className="w-4 h-4 mr-2" />
+                                  Remove from Folder
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
                 </div>
               ) : itemViewMode === "cards" ? (
                 /* Cards View */
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {folderItems.map((item) => (
                     <div
                       key={item.id}
@@ -1153,7 +1328,7 @@ export function MediaFoldersView({
             <>
               {/* Loading state */}
               {loading ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                   {[1, 2, 3, 4, 5, 6].map((i) => (
                     <Skeleton key={i} className="h-32 rounded-xl" />
                   ))}
@@ -1183,346 +1358,513 @@ export function MediaFoldersView({
                 <>
                   {/* Folders Grid View */}
                   {foldersViewMode === "grid" && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div
+                      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+                      role="list"
+                    >
                       {folders.map((folder) => (
-                        <div
+                        <article
                           key={folder.id}
-                          className={cn(
-                            "group relative p-4 rounded-xl border bg-card transition-all cursor-pointer",
-                            "hover:bg-accent/50 hover:shadow-md"
-                          )}
+                          role="listitem"
+                          className="group flex flex-col bg-card border border-border rounded-xl overflow-hidden hover:border-muted-foreground/30 transition-all cursor-pointer focus-within:ring-2 focus-within:ring-ring"
                           onClick={() => setSelectedFolder(folder)}
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setSelectedFolder(folder);
+                            }
+                          }}
                         >
-                          <div className="flex items-start justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className="p-2 rounded-lg bg-orange-500/10">
-                                <Folder className="w-6 h-6 text-orange-500" />
-                              </div>
-                              <div>
-                                <h3 className="font-semibold">{folder.name}</h3>
-                                {folder.description && (
-                                  <p className="text-sm text-muted-foreground line-clamp-1">
-                                    {folder.description}
-                                  </p>
-                                )}
-                              </div>
+                          {/* Cover/Header */}
+                          <div className="relative h-32">
+                            <FolderCover
+                              coverUrl={folder.coverUrl}
+                              name={folder.name}
+                              className="w-full h-full"
+                              iconClassName="w-12 h-12"
+                            />
+                            <div className="absolute top-2 right-2">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger
+                                  asChild
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-8 w-8 p-0 bg-background/80 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity"
+                                  >
+                                    <MoreVertical className="w-4 h-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openEditModal(folder);
+                                    }}
+                                  >
+                                    <Edit className="mr-2 h-4 w-4" />
+                                    Edit
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setDeleteTarget(folder);
+                                    }}
+                                    className="text-destructive focus:text-destructive"
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Delete
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
                             </div>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger
-                                asChild
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 shrink-0"
-                                >
-                                  <MoreVertical className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    openEditModal(folder);
-                                  }}
-                                >
-                                  <Edit className="mr-2 h-4 w-4" />
-                                  Edit
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setDeleteTarget(folder);
-                                  }}
-                                  className="text-destructive focus:text-destructive"
-                                >
-                                  <Trash2 className="mr-2 h-4 w-4" />
-                                  Delete
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
                           </div>
-                          <div className="flex items-center gap-4 mt-4 text-xs text-muted-foreground">
-                            <span>{folder.itemCount || 0} items</span>
-                            {folder.bookCount ? (
+
+                          {/* Content */}
+                          <div className="flex-1 p-4 flex flex-col">
+                            <h3
+                              className="font-semibold text-sm truncate"
+                              title={folder.name}
+                            >
+                              {folder.name}
+                            </h3>
+                            {folder.description && (
+                              <p className="text-xs text-muted-foreground truncate mt-0.5">
+                                {folder.description}
+                              </p>
+                            )}
+
+                            <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
                               <span className="flex items-center gap-1">
-                                <BookOpen className="w-3 h-3" />{" "}
-                                {folder.bookCount}
+                                <HardDrive className="w-3 h-3" />
+                                {folder.itemCount || 0} items
                               </span>
-                            ) : null}
-                            {folder.audioCount ? (
-                              <span className="flex items-center gap-1">
-                                <Music className="w-3 h-3" />{" "}
-                                {folder.audioCount}
-                              </span>
-                            ) : null}
-                            {folder.videoCount ? (
-                              <span className="flex items-center gap-1">
-                                <Video className="w-3 h-3" />{" "}
-                                {folder.videoCount}
-                              </span>
-                            ) : null}
+                              {folder.bookCount ? (
+                                <span className="flex items-center gap-1">
+                                  <BookOpen className="w-3 h-3" />
+                                  {folder.bookCount}
+                                </span>
+                              ) : null}
+                              {folder.audioCount ? (
+                                <span className="flex items-center gap-1">
+                                  <Music className="w-3 h-3" />
+                                  {folder.audioCount}
+                                </span>
+                              ) : null}
+                              {folder.videoCount ? (
+                                <span className="flex items-center gap-1">
+                                  <Video className="w-3 h-3" />
+                                  {folder.videoCount}
+                                </span>
+                              ) : null}
+                            </div>
+
+                            {/* Progress */}
+                            <div className="mt-auto pt-3">
+                              <div className="flex items-center justify-between mb-1.5">
+                                <span className="text-[10px] text-muted-foreground">
+                                  {new Date(
+                                    folder.updatedAt
+                                  ).toLocaleDateString()}
+                                </span>
+                                <span className="text-[10px] font-medium">
+                                  {folder.bookCount || 0}B /{" "}
+                                  {folder.audioCount || 0}A /{" "}
+                                  {folder.videoCount || 0}V
+                                </span>
+                              </div>
+                              <Progress
+                                value={folder.itemCount ? 100 : 0}
+                                className="h-1"
+                              />
+                            </div>
                           </div>
-                        </div>
+                        </article>
                       ))}
                     </div>
                   )}
 
                   {/* Folders List View */}
                   {foldersViewMode === "list" && (
-                    <div className="space-y-3">
+                    <div
+                      className="space-y-2 sm:space-y-3"
+                      role="list"
+                      aria-label="Folders in your library"
+                    >
                       {folders.map((folder) => (
-                        <div
+                        <article
                           key={folder.id}
+                          role="listitem"
                           className={cn(
-                            "group flex items-center gap-4 p-4 rounded-xl border bg-card transition-all cursor-pointer",
-                            "hover:bg-accent/50 hover:shadow-md"
+                            "group flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl bg-card border border-border hover:border-muted-foreground/30 active:bg-secondary/30 transition-all cursor-pointer focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
                           )}
                           onClick={() => setSelectedFolder(folder)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setSelectedFolder(folder);
+                            }
+                          }}
+                          tabIndex={0}
                         >
-                          <div className="p-3 rounded-lg bg-orange-500/10 shrink-0">
-                            <Folder className="w-8 h-8 text-orange-500" />
-                          </div>
+                          {/* Cover - hidden on mobile */}
+                          <FolderCover
+                            coverUrl={folder.coverUrl}
+                            name={folder.name}
+                            className="w-12 h-12 rounded-lg shrink-0 hidden sm:flex"
+                            iconClassName="w-5 h-5"
+                          />
+                          {/* Folder info */}
                           <div className="flex-1 min-w-0">
-                            <h3 className="font-semibold text-lg">
+                            <h3 className="font-semibold text-sm text-foreground truncate pr-2">
                               {folder.name}
                             </h3>
                             {folder.description && (
-                              <p className="text-sm text-muted-foreground line-clamp-2 mt-1">
+                              <p className="text-xs text-muted-foreground truncate mt-0.5">
                                 {folder.description}
                               </p>
                             )}
-                            <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                              <span>{folder.itemCount || 0} items</span>
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5">
+                              <span className="text-xs text-muted-foreground uppercase font-medium">
+                                FOLDER
+                              </span>
+                              <span className="text-muted-foreground/40">
+                                •
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                {folder.itemCount || 0} items
+                              </span>
+                              {folder.bookCount ? (
+                                <>
+                                  <span className="hidden sm:inline text-muted-foreground/40">
+                                    •
+                                  </span>
+                                  <span className="hidden sm:flex items-center gap-1 text-xs text-muted-foreground">
+                                    <BookOpen className="w-3 h-3" />
+                                    {folder.bookCount} books
+                                  </span>
+                                </>
+                              ) : null}
+                              {folder.audioCount ? (
+                                <>
+                                  <span className="hidden sm:inline text-muted-foreground/40">
+                                    •
+                                  </span>
+                                  <span className="hidden sm:flex items-center gap-1 text-xs text-muted-foreground">
+                                    <Music className="w-3 h-3" />
+                                    {folder.audioCount} audio
+                                  </span>
+                                </>
+                              ) : null}
+                              {folder.videoCount ? (
+                                <>
+                                  <span className="hidden sm:inline text-muted-foreground/40">
+                                    •
+                                  </span>
+                                  <span className="hidden sm:flex items-center gap-1 text-xs text-muted-foreground">
+                                    <Video className="w-3 h-3" />
+                                    {folder.videoCount} video
+                                  </span>
+                                </>
+                              ) : null}
+                            </div>
+                            {/* Mobile-only metadata row */}
+                            <div className="flex sm:hidden items-center gap-3 mt-1.5 text-xs text-muted-foreground">
                               {folder.bookCount ? (
                                 <span className="flex items-center gap-1">
-                                  <BookOpen className="w-3 h-3" />{" "}
-                                  {folder.bookCount} books
+                                  <BookOpen className="w-3 h-3" />
+                                  {folder.bookCount}
                                 </span>
                               ) : null}
                               {folder.audioCount ? (
                                 <span className="flex items-center gap-1">
-                                  <Music className="w-3 h-3" />{" "}
-                                  {folder.audioCount} audio
+                                  <Music className="w-3 h-3" />
+                                  {folder.audioCount}
                                 </span>
                               ) : null}
                               {folder.videoCount ? (
                                 <span className="flex items-center gap-1">
-                                  <Video className="w-3 h-3" />{" "}
-                                  {folder.videoCount} video
+                                  <Video className="w-3 h-3" />
+                                  {folder.videoCount}
                                 </span>
                               ) : null}
                             </div>
                           </div>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger
-                              asChild
-                              onClick={(e) => e.stopPropagation()}
+
+                          <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4">
+                            {/* Open button */}
+                            <Button
+                              size="sm"
+                              variant="default"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedFolder(folder);
+                              }}
+                              className="h-9 sm:h-8 px-4 sm:px-3 text-xs font-semibold"
                             >
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 shrink-0"
+                              Open
+                            </Button>
+
+                            {/* More actions dropdown */}
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="h-9 sm:h-8 w-9 sm:w-8 p-0 sm:opacity-0 sm:group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-all"
+                                  aria-label={`More options for ${folder.name}`}
+                                >
+                                  <MoreVertical className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent
+                                align="end"
+                                onClick={(e) => e.stopPropagation()}
                               >
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  openEditModal(folder);
-                                }}
-                              >
-                                <Edit className="mr-2 h-4 w-4" />
-                                Edit
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setDeleteTarget(folder);
-                                }}
-                                className="text-destructive focus:text-destructive"
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
+                                <DropdownMenuItem
+                                  onClick={() => openEditModal(folder)}
+                                >
+                                  <Edit className="w-4 h-4 mr-2" />
+                                  Edit Folder
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => setDeleteTarget(folder)}
+                                  className="text-destructive focus:text-destructive"
+                                >
+                                  <Trash2 className="w-4 h-4 mr-2" />
+                                  Delete Folder
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </article>
                       ))}
                     </div>
                   )}
 
                   {/* Folders Cards View */}
                   {foldersViewMode === "cards" && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div
+                      className="grid grid-cols-1 md:grid-cols-2 gap-4"
+                      role="list"
+                    >
                       {folders.map((folder) => (
-                        <div
+                        <article
                           key={folder.id}
+                          role="listitem"
                           className={cn(
-                            "group relative p-5 rounded-xl border bg-card transition-all cursor-pointer",
-                            "hover:bg-accent/50 hover:shadow-md"
+                            "group flex bg-card border border-border rounded-xl overflow-hidden hover:border-muted-foreground/30 transition-all cursor-pointer focus-within:ring-2 focus-within:ring-ring"
                           )}
                           onClick={() => setSelectedFolder(folder)}
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setSelectedFolder(folder);
+                            }
+                          }}
                         >
-                          <div className="flex items-start gap-4">
-                            <div className="p-3 rounded-lg bg-orange-500/10 shrink-0">
-                              <Folder className="w-10 h-10 text-orange-500" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-start justify-between gap-2">
-                                <h3 className="font-semibold text-lg">
+                          {/* Cover side */}
+                          <div className="w-24 sm:w-32 aspect-[3/4] shrink-0 relative">
+                            <FolderCover
+                              coverUrl={folder.coverUrl}
+                              name={folder.name}
+                              className="w-full h-full"
+                              iconClassName="w-10 h-10"
+                            />
+                          </div>
+
+                          {/* Content */}
+                          <div className="flex-1 p-4 flex flex-col min-w-0">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0 flex-1">
+                                <h3
+                                  className="font-semibold text-sm truncate"
+                                  title={folder.name}
+                                >
                                   {folder.name}
                                 </h3>
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger
-                                    asChild
-                                    onClick={(e) => e.stopPropagation()}
+                                {folder.description && (
+                                  <p className="text-xs text-muted-foreground truncate">
+                                    {folder.description}
+                                  </p>
+                                )}
+                              </div>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger
+                                  asChild
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-8 w-8 p-0 -mt-1 -mr-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
                                   >
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-8 w-8 shrink-0 -mt-1 -mr-2"
-                                    >
-                                      <MoreVertical className="h-4 w-4" />
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end">
-                                    <DropdownMenuItem
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        openEditModal(folder);
-                                      }}
-                                    >
-                                      <Edit className="mr-2 h-4 w-4" />
-                                      Edit
-                                    </DropdownMenuItem>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setDeleteTarget(folder);
-                                      }}
-                                      className="text-destructive focus:text-destructive"
-                                    >
-                                      <Trash2 className="mr-2 h-4 w-4" />
-                                      Delete
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
+                                    <MoreVertical className="w-4 h-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openEditModal(folder);
+                                    }}
+                                  >
+                                    <Edit className="mr-2 h-4 w-4" />
+                                    Edit
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setDeleteTarget(folder);
+                                    }}
+                                    className="text-destructive focus:text-destructive"
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Delete
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+
+                            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <HardDrive className="w-3 h-3" />
+                                {folder.itemCount || 0} items
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Calendar className="w-3 h-3" />
+                                {new Date(
+                                  folder.updatedAt
+                                ).toLocaleDateString()}
+                              </span>
+                            </div>
+
+                            {/* Progress area - consistent with other cards */}
+                            <div className="mt-auto pt-3 flex items-center gap-3">
+                              <div className="flex-1">
+                                <Progress
+                                  value={folder.itemCount ? 100 : 0}
+                                  className="h-1.5"
+                                />
                               </div>
-                              {folder.description && (
-                                <p className="text-sm text-muted-foreground line-clamp-2 mt-1">
-                                  {folder.description}
-                                </p>
-                              )}
-                              <div className="flex flex-wrap items-center gap-3 mt-3 text-xs text-muted-foreground">
-                                <span className="font-medium">
-                                  {folder.itemCount || 0} items
-                                </span>
-                                {folder.bookCount ? (
-                                  <span className="flex items-center gap-1 bg-blue-500/10 text-blue-600 px-2 py-0.5 rounded-full">
-                                    <BookOpen className="w-3 h-3" />{" "}
-                                    {folder.bookCount}
-                                  </span>
-                                ) : null}
-                                {folder.audioCount ? (
-                                  <span className="flex items-center gap-1 bg-purple-500/10 text-purple-600 px-2 py-0.5 rounded-full">
-                                    <Music className="w-3 h-3" />{" "}
-                                    {folder.audioCount}
-                                  </span>
-                                ) : null}
-                                {folder.videoCount ? (
-                                  <span className="flex items-center gap-1 bg-rose-500/10 text-rose-600 px-2 py-0.5 rounded-full">
-                                    <Video className="w-3 h-3" />{" "}
-                                    {folder.videoCount}
-                                  </span>
-                                ) : null}
-                              </div>
+                              <span className="text-xs font-medium w-16 text-right">
+                                {folder.bookCount || 0}/{folder.audioCount || 0}
+                                /{folder.videoCount || 0}
+                              </span>
                             </div>
                           </div>
-                        </div>
+                        </article>
                       ))}
                     </div>
                   )}
 
                   {/* Folders Compact View */}
                   {foldersViewMode === "compact" && (
-                    <div className="border rounded-lg divide-y">
+                    <div className="border border-border rounded-xl overflow-hidden divide-y divide-border">
                       {folders.map((folder) => (
                         <div
                           key={folder.id}
                           className={cn(
-                            "group flex items-center gap-3 px-4 py-2.5 transition-colors cursor-pointer",
-                            "hover:bg-accent/50"
+                            "group flex items-center gap-3 px-3 py-3 transition-colors cursor-pointer",
+                            "hover:bg-secondary/30"
                           )}
                           onClick={() => setSelectedFolder(folder)}
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setSelectedFolder(folder);
+                            }
+                          }}
                         >
-                          <Folder className="w-4 h-4 text-orange-500 shrink-0" />
-                          <span className="font-medium truncate flex-1">
-                            {folder.name}
-                          </span>
-                          <div className="flex items-center gap-3 text-xs text-muted-foreground shrink-0">
-                            <span>{folder.itemCount || 0}</span>
+                          <FolderCover
+                            coverUrl={folder.coverUrl}
+                            name={folder.name}
+                            className="w-8 h-10 rounded shrink-0"
+                            iconClassName="w-4 h-4"
+                          />
+
+                          <div className="flex-1 min-w-0">
+                            <span
+                              className="text-sm font-medium truncate block"
+                              title={folder.name}
+                            >
+                              {folder.name}
+                            </span>
+                            {folder.description && (
+                              <span className="text-xs text-muted-foreground truncate block">
+                                {folder.description}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="hidden sm:flex items-center gap-3 text-xs text-muted-foreground shrink-0">
                             {folder.bookCount ? (
-                              <span className="flex items-center gap-0.5">
-                                <BookOpen className="w-3 h-3" />{" "}
+                              <span className="flex items-center gap-1">
+                                <BookOpen className="w-3 h-3" />
                                 {folder.bookCount}
                               </span>
                             ) : null}
                             {folder.audioCount ? (
-                              <span className="flex items-center gap-0.5">
-                                <Music className="w-3 h-3" />{" "}
+                              <span className="flex items-center gap-1">
+                                <Music className="w-3 h-3" />
                                 {folder.audioCount}
                               </span>
                             ) : null}
                             {folder.videoCount ? (
-                              <span className="flex items-center gap-0.5">
-                                <Video className="w-3 h-3" />{" "}
+                              <span className="flex items-center gap-1">
+                                <Video className="w-3 h-3" />
                                 {folder.videoCount}
                               </span>
                             ) : null}
                           </div>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger
-                              asChild
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-xs text-muted-foreground w-7 text-right">
+                              {folder.itemCount || 0}
+                            </span>
+
+                            <div
+                              className="opacity-0 group-hover:opacity-100 transition-opacity"
                               onClick={(e) => e.stopPropagation()}
                             >
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 shrink-0"
-                              >
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  openEditModal(folder);
-                                }}
-                              >
-                                <Edit className="mr-2 h-4 w-4" />
-                                Edit
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setDeleteTarget(folder);
-                                }}
-                                className="text-destructive focus:text-destructive"
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 w-7 p-0"
+                                  >
+                                    <MoreVertical className="w-3.5 h-3.5" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem
+                                    onClick={() => openEditModal(folder)}
+                                  >
+                                    <Edit className="mr-2 h-4 w-4" />
+                                    Edit
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={() => setDeleteTarget(folder)}
+                                    className="text-destructive focus:text-destructive"
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Delete
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1613,9 +1955,81 @@ export function MediaFoldersView({
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Edit Folder</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Folder className="h-5 w-5 text-blue-500" />
+              Edit Folder
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            {/* Cover Image Section */}
+            <div className="space-y-2">
+              <Label>Cover Image</Label>
+              <div className="flex items-start gap-4">
+                <div
+                  className={cn(
+                    "w-20 h-20 rounded-lg border-2 border-dashed flex items-center justify-center overflow-hidden transition-all",
+                    coverPreview || (!removeCover && existingCoverUrl)
+                      ? "border-transparent"
+                      : "border-border bg-secondary/30"
+                  )}
+                >
+                  {coverPreview || (!removeCover && existingCoverUrl) ? (
+                    <img
+                      src={coverPreview || existingCoverUrl || ""}
+                      alt="Cover preview"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <ImageIcon className="w-8 h-8 text-muted-foreground/50" />
+                  )}
+                </div>
+
+                <div className="flex-1 space-y-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    onChange={handleCoverFileChange}
+                    className="hidden"
+                    disabled={isSaving}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isSaving}
+                    className="w-full"
+                  >
+                    <Upload className="w-4 h-4 mr-2" />
+                    {coverPreview || (!removeCover && existingCoverUrl)
+                      ? "Change Cover"
+                      : "Upload Cover"}
+                  </Button>
+                  {(coverPreview || (!removeCover && existingCoverUrl)) && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleRemoveCover}
+                      disabled={isSaving}
+                      className="w-full text-muted-foreground hover:text-destructive"
+                    >
+                      <X className="w-4 h-4 mr-2" />
+                      Remove Cover
+                    </Button>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    JPEG, PNG, WebP, or GIF. Max {maxCoverSizeMB}MB.
+                  </p>
+                  <p className="text-xs text-muted-foreground/70 flex items-center gap-1">
+                    <Clipboard className="w-3 h-3" />
+                    Or paste from clipboard (Ctrl/Cmd+V)
+                  </p>
+                </div>
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="edit-folder-name">Name</Label>
               <Input
@@ -1623,6 +2037,7 @@ export function MediaFoldersView({
                 value={formName}
                 onChange={(e) => setFormName(e.target.value)}
                 placeholder="Folder name"
+                disabled={isSaving}
               />
             </div>
             <div className="space-y-2">
@@ -1632,15 +2047,27 @@ export function MediaFoldersView({
                 value={formDescription}
                 onChange={(e) => setFormDescription(e.target.value)}
                 placeholder="Description"
+                disabled={isSaving}
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditFolder(null)}>
+            <Button
+              variant="outline"
+              onClick={() => setEditFolder(null)}
+              disabled={isSaving}
+            >
               Cancel
             </Button>
-            <Button onClick={handleUpdateFolder} disabled={isSaving}>
-              {isSaving ? "Saving..." : "Save Changes"}
+            <Button
+              onClick={handleUpdateFolder}
+              disabled={isSaving || isUploadingCover}
+            >
+              {isUploadingCover
+                ? "Uploading cover..."
+                : isSaving
+                  ? "Saving..."
+                  : "Save Changes"}
             </Button>
           </DialogFooter>
         </DialogContent>

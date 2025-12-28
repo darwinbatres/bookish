@@ -1401,6 +1401,22 @@ export async function updateMediaFolder(
   return handleResponse<DBMediaFolder>(response);
 }
 
+export async function uploadMediaFolderCover(
+  folderId: string,
+  file: File
+): Promise<string> {
+  const formData = new FormData();
+  formData.append("folderId", folderId);
+  formData.append("file", file);
+
+  const response = await fetch(`${API_BASE}/media-folders/cover-upload`, {
+    method: "POST",
+    body: formData,
+  });
+  const result = await handleResponse<{ s3Key: string }>(response);
+  return result.s3Key;
+}
+
 export async function deleteMediaFolder(id: string): Promise<void> {
   const response = await fetch(`${API_BASE}/media-folders/${id}`, {
     method: "DELETE",
@@ -1490,4 +1506,19 @@ export async function reorderMediaFolderItems(
     body: JSON.stringify({ itemIds }),
   });
   await handleResponse<{ success: boolean }>(response);
+}
+
+// Item references (for delete confirmation)
+export interface ItemReferences {
+  folders: DBMediaFolder[];
+  playlists: DBPlaylist[];
+}
+
+export async function fetchItemReferences(
+  itemType: "book" | "audio" | "video",
+  itemId: string
+): Promise<ItemReferences> {
+  const params = new URLSearchParams({ itemType, itemId });
+  const response = await fetch(`${API_BASE}/item-references?${params}`);
+  return handleResponse<ItemReferences>(response);
 }

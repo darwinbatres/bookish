@@ -4,6 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { VideoTrackCard } from "./video-track-card";
 import { VideoUpload } from "./video-upload";
 import { VideoEditModal } from "./video-edit-modal";
+import { DeleteConfirmationInfo } from "./delete-confirmation-info";
 import { SearchInput, PaginationControls } from "./library";
 import { VideoViewModeSwitcher } from "./video-library";
 import {
@@ -190,17 +191,18 @@ export function VideoLibraryView({
                   {search && ` matching "${search}"`}
                 </p>
               </div>
-              <VideoViewModeSwitcher
-                currentMode={viewMode}
-                onChange={handleViewModeChange}
-              />
             </div>
 
+            {/* Search and view controls */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
               <SearchInput
                 value={search}
                 onChange={setSearch}
                 placeholder="Search videos..."
+              />
+              <VideoViewModeSwitcher
+                currentMode={viewMode}
+                onChange={handleViewModeChange}
               />
             </div>
           </div>
@@ -227,11 +229,11 @@ export function VideoLibraryView({
             <div
               className={
                 viewMode === "grid"
-                  ? "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4"
+                  ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
                   : viewMode === "cards"
-                    ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+                    ? "grid grid-cols-1 md:grid-cols-2 gap-4"
                     : viewMode === "compact"
-                      ? "space-y-1"
+                      ? "border border-border rounded-xl overflow-hidden divide-y divide-border"
                       : "space-y-2"
               }
             >
@@ -248,6 +250,7 @@ export function VideoLibraryView({
                   onDownload={handleDownload}
                   onToggleFavorite={handleToggleFavorite}
                   viewMode={viewMode}
+                  onRefresh={loadTracks}
                 />
               ))}
             </div>
@@ -277,9 +280,20 @@ export function VideoLibraryView({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete video?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete &ldquo;{deleteTarget?.title}&rdquo;.
-              This action cannot be undone.
+            <AlertDialogDescription asChild>
+              <div>
+                <p>
+                  This will permanently delete &ldquo;{deleteTarget?.title}
+                  &rdquo;. This action cannot be undone.
+                </p>
+                {deleteTarget && (
+                  <DeleteConfirmationInfo
+                    itemType="video"
+                    itemId={deleteTarget.id}
+                    isFavorite={deleteTarget.isFavorite}
+                  />
+                )}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

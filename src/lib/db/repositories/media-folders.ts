@@ -564,3 +564,20 @@ export async function getFoldersContainingItem(
   );
   return result.rows.map(mapDBRowToMediaFolder);
 }
+
+/**
+ * Remove all folder references for a specific item
+ * Called when the item itself is deleted from its category
+ */
+export async function removeItemFromAllFolders(
+  itemType: MediaItemType,
+  itemId: string
+): Promise<number> {
+  const pool = getPool();
+  const result = await pool.query(
+    `DELETE FROM media_folder_items 
+     WHERE item_type = $1 AND item_id = $2`,
+    [itemType, itemId]
+  );
+  return result.rowCount ?? 0;
+}

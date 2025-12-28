@@ -3,6 +3,7 @@ import type { DBBook, LibraryViewMode, PaginatedResponse } from "@/types";
 import { fetchBooksPaginated, deleteBook } from "@/lib/api/client";
 import { BookUpload } from "./book-upload";
 import { BookTable } from "./book-table";
+import { DeleteConfirmationInfo } from "./delete-confirmation-info";
 import {
   BookGrid,
   BookCards,
@@ -167,19 +168,19 @@ export function LibraryView({
       );
     }
 
-    const viewProps = {
+    const fullViewProps = {
       books: displayBooks,
       onReadBook,
-      onDeleteBook: handleDeleteClick,
+      onBooksChange: handleBookAdded,
     };
 
     switch (viewMode) {
       case "grid":
-        return <BookGrid {...viewProps} />;
+        return <BookGrid {...fullViewProps} />;
       case "cards":
-        return <BookCards {...viewProps} />;
+        return <BookCards {...fullViewProps} />;
       case "compact":
-        return <BookCompact {...viewProps} />;
+        return <BookCompact {...fullViewProps} />;
       default:
         return (
           <BookTable
@@ -262,10 +263,21 @@ export function LibraryView({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete book?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete &ldquo;{deleteTarget?.title}&rdquo;
-              from your library and remove the file from storage. This action
-              cannot be undone.
+            <AlertDialogDescription asChild>
+              <div>
+                <p>
+                  This will permanently delete &ldquo;{deleteTarget?.title}
+                  &rdquo; from your library and remove the file from storage.
+                  This action cannot be undone.
+                </p>
+                {deleteTarget && (
+                  <DeleteConfirmationInfo
+                    itemType="book"
+                    itemId={deleteTarget.id}
+                    isFavorite={deleteTarget.isFavorite}
+                  />
+                )}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

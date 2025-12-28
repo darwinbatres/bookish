@@ -174,7 +174,7 @@ Located in `src/pages/api/`:
 - `POST /api/books` - Create a book
 - `GET /api/books/:id` - Get a book
 - `PATCH /api/books/:id` - Update a book (title, author, cover, favorite)
-- `DELETE /api/books/:id` - Delete a book (and S3 files)
+- `DELETE /api/books/:id` - Delete a book (and S3 files, removes from all folders)
 - `POST /api/books/upload` - Upload book file (proxied to S3)
 - `POST /api/books/cover-upload` - Upload cover image (proxied to S3)
 - `GET /api/books/stream` - Stream book/cover file from S3 (API Gateway pattern)
@@ -227,7 +227,7 @@ Located in `src/pages/api/`:
 - `GET /api/audio/metadata` - Get unique albums/artists for autocomplete
 - `GET /api/audio/:id` - Get a single audio track
 - `PATCH /api/audio/:id` - Update track (title, artist, album, position, duration, coverUrl, favorite)
-- `DELETE /api/audio/:id` - Delete track (and S3 file)
+- `DELETE /api/audio/:id` - Delete track (and S3 file, removes from all folders)
 - `GET /api/audio/:id/bookmarks` - Get timestamp bookmarks
 - `POST /api/audio/:id/bookmarks` - Add timestamp bookmark
 - `DELETE /api/audio/:id/bookmarks` - Remove bookmark
@@ -257,7 +257,7 @@ Located in `src/pages/api/`:
 - `GET /api/video/download` - Download video file with proper filename
 - `GET /api/video/:id` - Get a single video track
 - `PATCH /api/video/:id` - Update video (title, description, position, duration, coverUrl, favorite)
-- `DELETE /api/video/:id` - Delete video (and S3 file)
+- `DELETE /api/video/:id` - Delete video (and S3 file, removes from all folders)
 - `GET /api/video/:id/bookmarks` - Get timestamp bookmarks
 - `POST /api/video/:id/bookmarks` - Add timestamp bookmark
 - `DELETE /api/video/:id/bookmarks` - Remove bookmark
@@ -271,11 +271,16 @@ Located in `src/pages/api/`:
 - `POST /api/media-folders` - Create a media folder
 - `GET /api/media-folders/:id` - Get a media folder
 - `PATCH /api/media-folders/:id` - Update a media folder (name, description, color, icon)
-- `DELETE /api/media-folders/:id` - Delete a media folder
+- `DELETE /api/media-folders/:id` - Delete a media folder (items remain in library)
 - `GET /api/media-folders/:id/items` - Get items in a folder (with details)
 - `POST /api/media-folders/:id/items` - Add item to folder (book, audio, or video)
 - `DELETE /api/media-folders/:id/items` - Remove item from folder
 - `PATCH /api/media-folders/:id/items` - Update item (notes, sortOrder)
+
+**Cascading Behavior:**
+- Deleting a **folder** removes the folder and its item references, but keeps the actual files in the library
+- Deleting a **book/audio/video** from the library automatically removes it from all folders
+- Stats are always accurate (calculated dynamically from database, not cached)
 
 ### API Pattern
 
@@ -326,6 +331,7 @@ export default async function handler(
 - `VideoEditModal` - Modal for editing video track details
 - `VideoCover` - Video thumbnail/cover display
 - `MediaFoldersView` - Media folder management with folder contents, pagination, filtering, markdown notes, and playable items
+- `FolderUpload` - Unified multi-type upload for folders (books, audio, video) with auto-add to folder
 
 ## S3 Integration
 

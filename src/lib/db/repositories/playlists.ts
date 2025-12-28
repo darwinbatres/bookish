@@ -23,7 +23,9 @@ function mapDBRowToPlaylist(row: DBPlaylistRow): DBPlaylist {
     icon: row.icon,
     sortOrder: row.sort_order,
     trackCount: row.track_count ? parseInt(row.track_count, 10) : undefined,
-    totalDuration: row.total_duration ? parseInt(row.total_duration, 10) : undefined,
+    totalDuration: row.total_duration
+      ? parseInt(row.total_duration, 10)
+      : undefined,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
@@ -73,7 +75,7 @@ export async function createPlaylist(
   input: CreatePlaylistInput
 ): Promise<DBPlaylist> {
   const pool = getPool();
-  
+
   // Get next sort order
   const sortResult = await pool.query<{ max: number | null }>(
     "SELECT MAX(sort_order) as max FROM playlists"
@@ -181,4 +183,22 @@ export async function getPlaylistCount(): Promise<number> {
     `SELECT COUNT(*) as count FROM playlists`
   );
   return parseInt(result.rows[0].count, 10);
+}
+
+/**
+ * Get playlists that contain a specific audio track
+ */
+export async function getPlaylistsContainingTrack(
+  trackId: string
+): Promise<DBPlaylist[]> {
+  const pool = getPool();
+  const result = await pool.query<DBPlaylistRow>(
+    `SELECT DISTINCT p.*
+     FROM playlists p
+     INNER JOIN playlist_items pi ON pi.playlist_id = p.id
+     WHERE pi.track_id = $1
+     ORDER BY p.name`,
+    [trackId]
+  );
+  return result.rows.map(mapDBRowToPlaylist);
 }

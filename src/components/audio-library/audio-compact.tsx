@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { AudioCover } from "@/components/audio-cover";
+import { MembershipBadge } from "@/components/membership-badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -63,7 +64,10 @@ export function AudioCompact({
   }
 
   return (
-    <div className="space-y-1" role="list">
+    <div
+      className="border border-border rounded-xl overflow-hidden divide-y divide-border"
+      role="list"
+    >
       {tracks.map((track) => {
         const isCurrentTrack = currentTrackId === track.id;
         const progress = track.durationSeconds
@@ -75,20 +79,31 @@ export function AudioCompact({
             key={track.id}
             role="listitem"
             className={cn(
-              "group flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-accent/50 transition-colors cursor-pointer",
-              isCurrentTrack && "bg-accent/70"
+              "group flex items-center gap-3 px-3 py-3 hover:bg-secondary/30 transition-colors cursor-pointer",
+              isCurrentTrack && "bg-accent/50"
             )}
             onClick={() =>
               isPlaying && isCurrentTrack ? onPause() : onPlay(track)
             }
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                if (isPlaying && isCurrentTrack) {
+                  onPause();
+                } else {
+                  onPlay(track);
+                }
+              }
+            }}
           >
             {/* Thumbnail */}
-            <div className="relative shrink-0 w-10 h-10 rounded overflow-hidden">
+            <div className="relative shrink-0 w-8 h-10 rounded overflow-hidden">
               <AudioCover
                 coverUrl={track.coverUrl}
                 title={track.title}
                 className="w-full h-full"
-                iconClassName="w-5 h-5"
+                iconClassName="w-4 h-4"
               />
 
               <div
@@ -99,110 +114,129 @@ export function AudioCompact({
                 )}
               >
                 {isPlaying && isCurrentTrack ? (
-                  <Pause className="h-4 w-4 text-white" fill="white" />
+                  <Pause className="h-3 w-3 text-white" fill="white" />
                 ) : (
-                  <Play className="h-4 w-4 text-white" fill="white" />
+                  <Play className="h-3 w-3 text-white" fill="white" />
                 )}
               </div>
             </div>
 
             {/* Favorite Star */}
             {track.isFavorite && (
-              <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500 flex-shrink-0" />
+              <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500 shrink-0" />
+            )}
+
+            {/* Membership Badge */}
+            {((track.folderCount ?? 0) > 0 ||
+              (track.playlistCount ?? 0) > 0) && (
+              <MembershipBadge
+                folderCount={track.folderCount}
+                playlistCount={track.playlistCount}
+                className="shrink-0"
+              />
             )}
 
             {/* Title & Artist */}
-            <div className="flex-1 min-w-0 flex items-center gap-4">
-              <div className="min-w-0 flex-1">
-                <h3
-                  className="text-sm font-medium truncate"
-                  title={track.title}
-                >
-                  {track.title}
-                </h3>
-              </div>
+            <div className="flex-1 min-w-0">
+              <span
+                className="text-sm font-medium truncate block"
+                title={track.title}
+              >
+                {track.title}
+              </span>
               {track.artist && (
-                <p className="text-xs text-muted-foreground truncate w-32 hidden sm:block">
+                <span className="text-xs text-muted-foreground truncate block">
                   {track.artist}
-                </p>
+                </span>
               )}
             </div>
 
-            {/* Bookmarks */}
-            {(track.bookmarksCount ?? 0) > 0 && (
-              <span className="text-xs text-muted-foreground items-center gap-1 hidden md:flex">
-                <Bookmark className="w-3 h-3" />
-                {track.bookmarksCount}
-              </span>
-            )}
-
-            {/* Progress */}
-            <div className="w-20 hidden lg:block">
-              <Progress value={progress} className="h-1" />
+            {/* Bookmarks - hidden on small screens */}
+            <div className="hidden sm:flex items-center gap-3 text-xs text-muted-foreground shrink-0">
+              {(track.bookmarksCount ?? 0) > 0 && (
+                <span className="flex items-center gap-1">
+                  <Bookmark className="w-3 h-3" />
+                  {track.bookmarksCount}
+                </span>
+              )}
             </div>
 
-            {/* Duration */}
-            <span className="text-xs text-muted-foreground w-12 text-right tabular-nums">
-              {track.durationSeconds
-                ? formatDuration(track.durationSeconds)
-                : "--:--"}
-            </span>
+            {/* Progress + Duration */}
+            <div className="flex items-center gap-2 shrink-0">
+              <div className="w-16 flex items-center gap-1.5">
+                <Progress value={progress} className="h-1 flex-1" />
+                <span className="text-[10px] text-muted-foreground w-7 text-right">
+                  {progress}%
+                </span>
+              </div>
 
-            {/* Actions */}
-            <div
-              className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => onToggleFavorite(track)}
-                className="h-7 w-7 p-0"
-                aria-label={
-                  track.isFavorite
-                    ? "Remove from favorites"
-                    : "Add to favorites"
-                }
+              {/* Actions on hover */}
+              <div
+                className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={(e) => e.stopPropagation()}
               >
-                <Heart
-                  className={cn(
-                    "w-3.5 h-3.5",
-                    track.isFavorite && "fill-amber-500 text-amber-500"
-                  )}
-                />
-              </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => onToggleFavorite(track)}
+                  className="h-7 w-7 p-0"
+                  aria-label={
+                    track.isFavorite
+                      ? "Remove from favorites"
+                      : "Add to favorites"
+                  }
+                >
+                  <Heart
+                    className={cn(
+                      "w-3.5 h-3.5",
+                      track.isFavorite && "fill-amber-500 text-amber-500"
+                    )}
+                  />
+                </Button>
 
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0">
-                    <MoreVertical className="w-3.5 h-3.5" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => onEdit(track)}>
-                    <Edit className="w-4 h-4 mr-2" />
-                    Edit
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => onDownload(track)}>
-                    <Download className="w-4 h-4 mr-2" />
-                    Download
-                  </DropdownMenuItem>
-                  {onAddToFolder && (
-                    <DropdownMenuItem onClick={() => onAddToFolder(track)}>
-                      <FolderPlus className="w-4 h-4 mr-2" />
-                      Add to Folder
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0">
+                      <MoreVertical className="w-3.5 h-3.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => onEdit(track)}>
+                      <Edit className="w-4 h-4 mr-2" />
+                      Edit Track
                     </DropdownMenuItem>
-                  )}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={() => onDelete(track)}
-                    className="text-destructive focus:text-destructive"
-                  >
-                    <Trash className="w-4 h-4 mr-2" />
-                    Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                    <DropdownMenuItem onClick={() => onToggleFavorite(track)}>
+                      <Star
+                        className={cn(
+                          "w-4 h-4 mr-2",
+                          track.isFavorite && "fill-current text-amber-500"
+                        )}
+                      />
+                      {track.isFavorite
+                        ? "Remove from Favorites"
+                        : "Add to Favorites"}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => onDownload(track)}>
+                      <Download className="w-4 h-4 mr-2" />
+                      Download
+                    </DropdownMenuItem>
+                    {onAddToFolder && (
+                      <DropdownMenuItem onClick={() => onAddToFolder(track)}>
+                        <FolderPlus className="w-4 h-4 mr-2" />
+                        Add to Folder
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => onDelete(track)}
+                      className="text-destructive focus:text-destructive"
+                    >
+                      <Trash className="w-4 h-4 mr-2" />
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
           </article>
         );

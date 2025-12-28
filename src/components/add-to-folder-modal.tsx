@@ -25,6 +25,8 @@ interface AddToFolderModalProps {
   itemId: string;
   itemType: MediaItemType;
   itemTitle: string;
+  /** Called after successfully adding item to a folder (useful for refreshing data) */
+  onSuccess?: () => void;
 }
 
 export function AddToFolderModal({
@@ -33,6 +35,7 @@ export function AddToFolderModal({
   itemId,
   itemType,
   itemTitle,
+  onSuccess,
 }: AddToFolderModalProps) {
   const [folders, setFolders] = useState<DBMediaFolder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,9 +69,11 @@ export function AddToFolderModal({
       await addItemToMediaFolder(folderId, itemType, itemId);
       toast.success(`Added to folder`);
       onOpenChange(false);
+      onSuccess?.();
     } catch (error: unknown) {
       console.error("Failed to add to folder:", error);
-      const message = error instanceof Error ? error.message : "Failed to add to folder";
+      const message =
+        error instanceof Error ? error.message : "Failed to add to folder";
       if (message.includes("already exists")) {
         toast.error("Item is already in this folder");
       } else {

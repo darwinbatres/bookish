@@ -9,6 +9,8 @@ import {
 import { BookCover } from "./book-cover";
 import { EditBookModal } from "./edit-book-modal";
 import { AddToFolderModal } from "@/components/add-to-folder-modal";
+import { MembershipBadge } from "@/components/membership-badge";
+import { DeleteConfirmationInfo } from "./delete-confirmation-info";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -293,6 +295,16 @@ export function BookTable({
                     </span>
                   </>
                 )}
+                {(book.folderCount ?? 0) > 0 && (
+                  <>
+                    <span className="hidden sm:inline text-muted-foreground/40">
+                      •
+                    </span>
+                    <span className="hidden sm:inline">
+                      <MembershipBadge folderCount={book.folderCount} />
+                    </span>
+                  </>
+                )}
               </div>
               {/* Mobile-only metadata row */}
               <div className="flex sm:hidden items-center gap-3 mt-1.5 text-xs text-muted-foreground">
@@ -461,10 +473,21 @@ export function BookTable({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete book?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete &ldquo;{deleteTarget?.title}&rdquo;
-              from your library and remove the file from storage. This action
-              cannot be undone.
+            <AlertDialogDescription asChild>
+              <div>
+                <p>
+                  This will permanently delete &ldquo;{deleteTarget?.title}
+                  &rdquo; from your library and remove the file from storage.
+                  This action cannot be undone.
+                </p>
+                {deleteTarget && (
+                  <DeleteConfirmationInfo
+                    itemType="book"
+                    itemId={deleteTarget.id}
+                    isFavorite={deleteTarget.isFavorite}
+                  />
+                )}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -495,6 +518,7 @@ export function BookTable({
         itemId={folderTarget?.id || ""}
         itemType="book"
         itemTitle={folderTarget?.title || ""}
+        onSuccess={onBooksChange}
       />
     </div>
   );

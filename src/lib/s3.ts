@@ -366,3 +366,19 @@ export function getVideoFormatFromContentType(contentType: string): string {
   if (ct.includes("m4v")) return "m4v";
   return "mp4"; // default
 }
+
+// ============================================================================
+// Media Folder Support (January 2025)
+// ============================================================================
+
+/**
+ * Generate a unique S3 key for a media folder cover image
+ */
+export function generateMediaFolderCoverS3Key(
+  folderId: string,
+  filename: string
+): string {
+  const ext = filename.split(".").pop()?.toLowerCase() || "jpg";
+  const timestamp = Date.now();
+  return `folder-covers/${folderId}/${timestamp}.${ext}`;
+}

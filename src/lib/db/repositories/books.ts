@@ -1,4 +1,5 @@
 import { getPool } from "../pool";
+import { removeItemFromAllFolders } from "./media-folders";
 import type {
   DBBook,
   BookFormat,
@@ -24,6 +25,7 @@ interface DBBookRow {
   collection_name?: string | null;
   notes_count?: string; // COUNT returns bigint as string
   bookmarks_count?: string;
+  folder_count?: string;
   created_at: Date;
   updated_at: Date;
 }
@@ -78,6 +80,7 @@ function mapDBRowToBook(row: DBBookRow): DBBook {
     bookmarksCount: row.bookmarks_count
       ? parseInt(row.bookmarks_count, 10)
       : undefined,
+    folderCount: row.folder_count ? parseInt(row.folder_count, 10) : undefined,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
@@ -92,7 +95,8 @@ export async function getAllBooks(): Promise<DBBook[]> {
       b.*,
       c.name as collection_name,
       COUNT(DISTINCT n.id)::text as notes_count,
-      COUNT(DISTINCT bm.id)::text as bookmarks_count
+      COUNT(DISTINCT bm.id)::text as bookmarks_count,
+      (SELECT COUNT(*) FROM media_folder_items mfi WHERE mfi.item_id = b.id AND mfi.item_type = 'book')::text as folder_count
     FROM books b
     LEFT JOIN collections c ON b.collection_id = c.id
     LEFT JOIN notes n ON n.book_id = b.id
@@ -178,7 +182,8 @@ export async function getBooksWithPagination(
       b.*,
       c.name as collection_name,
       COUNT(DISTINCT n.id)::text as notes_count,
-      COUNT(DISTINCT bm.id)::text as bookmarks_count
+      COUNT(DISTINCT bm.id)::text as bookmarks_count,
+      (SELECT COUNT(*) FROM media_folder_items mfi WHERE mfi.item_id = b.id AND mfi.item_type = 'book')::text as folder_count
     FROM books b
     LEFT JOIN collections c ON b.collection_id = c.id
     LEFT JOIN notes n ON n.book_id = b.id
@@ -265,7 +270,8 @@ export async function searchBooksAdvanced(
       b.*,
       c.name as collection_name,
       COUNT(DISTINCT n.id)::text as notes_count,
-      COUNT(DISTINCT bm.id)::text as bookmarks_count
+      COUNT(DISTINCT bm.id)::text as bookmarks_count,
+      (SELECT COUNT(*) FROM media_folder_items mfi WHERE mfi.item_id = b.id AND mfi.item_type = 'book')::text as folder_count
     FROM books b
     LEFT JOIN collections c ON b.collection_id = c.id
     LEFT JOIN notes n ON n.book_id = b.id
@@ -395,6 +401,10 @@ export async function updateReadingProgress(
 
 export async function deleteBook(id: string): Promise<string | null> {
   const pool = getPool();
+
+  // Remove from all folders first
+  await removeItemFromAllFolders("book", id);
+
   const result = await pool.query<{ s3_key: string }>(
     `DELETE FROM books WHERE id = $1 RETURNING s3_key`,
     [id]
