@@ -1,7 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
-import type { DBBook, DBCollection, DBAudioTrack, DBVideoTrack } from "@/types";
+import type {
+  DBBook,
+  DBCollection,
+  DBAudioTrack,
+  DBVideoTrack,
+  DBImage,
+} from "@/types";
 import { formatDuration } from "@/types/audio";
 import {
   fetchBook,
@@ -22,6 +28,8 @@ import { SettingsView } from "@/components/settings-view";
 import { WishlistView } from "@/components/wishlist-view";
 import { AudioLibraryView } from "@/components/audio-library-view";
 import { VideoLibraryView } from "@/components/video-library-view";
+import { ImageLibraryView } from "@/components/image-library-view";
+import { ImageViewer } from "@/components/image-viewer";
 import { MediaFoldersView } from "@/components/media-folders-view";
 import { MiniPlayer } from "@/components/mini-player";
 import { FullPlayer } from "@/components/full-player";
@@ -65,6 +73,9 @@ export default function Home() {
   useEffect(() => {
     currentVideoRef.current = currentVideo;
   }, [currentVideo]);
+
+  // Image viewer state
+  const [viewingImage, setViewingImage] = useState<DBImage | null>(null);
 
   // Refs for tracking save state (avoids closure issues and duplicate saves)
   const lastSavedPositionRef = useRef<number>(-1);
@@ -434,6 +445,8 @@ export default function Home() {
       setActiveView("audio");
     } else if (view === "video" && activeView !== "video") {
       setActiveView("video");
+    } else if (view === "images" && activeView !== "images") {
+      setActiveView("images");
     } else if (view === "folders" && activeView !== "folders") {
       setActiveView("folders");
     } else if (!view && !bookId && activeView !== "library") {
@@ -456,8 +469,10 @@ export default function Home() {
     (book: DBBook) => {
       setCurrentBookId(book.id);
       setCurrentBook(book);
-      // Update URL without full page reload
-      router.push(`/?book=${book.id}`, undefined, { shallow: true });
+      // Add book param to URL while preserving existing params (view, folder, etc.)
+      router.push({ query: { ...router.query, book: book.id } }, undefined, {
+        shallow: true,
+      });
     },
     [router]
   );
@@ -465,10 +480,18 @@ export default function Home() {
   const handleBackToLibrary = useCallback(() => {
     setCurrentBookId(null);
     setCurrentBook(null);
-    triggerLibraryRefresh();
-    // Clear URL query
-    router.push("/", undefined, { shallow: true });
-  }, [triggerLibraryRefresh, router]);
+    // Just close the reader overlay - user stays on current view
+    // Remove book param from URL if present
+    if (router.query.book) {
+      const { book: _, ...rest } = router.query;
+      const hasOtherParams = Object.keys(rest).length > 0;
+      router.replace(
+        hasOtherParams ? { query: rest } : router.pathname,
+        undefined,
+        { shallow: true }
+      );
+    }
+  }, [router]);
 
   // Nav view change handler (only for library/stats)
   const handleNavViewChange = useCallback(
@@ -489,6 +512,8 @@ export default function Home() {
         router.push("/?view=audio", undefined, { shallow: true });
       } else if (view === "video") {
         router.push("/?view=video", undefined, { shallow: true });
+      } else if (view === "images") {
+        router.push("/?view=images", undefined, { shallow: true });
       } else if (view === "folders") {
         router.push("/?view=folders", undefined, { shallow: true });
       } else {
@@ -545,17 +570,6 @@ export default function Home() {
   }
 
   const renderContent = () => {
-    // If we have a book selected, show the reader regardless of activeView
-    if (currentBook) {
-      return (
-        <ReaderView
-          currentBook={currentBook}
-          onBackToLibrary={handleBackToLibrary}
-          onBookUpdate={refreshCurrentBook}
-        />
-      );
-    }
-
     switch (activeView) {
       case "stats":
         return <StatsView />;
@@ -614,12 +628,15 @@ export default function Home() {
             onPause={handleCloseVideoPlayer}
           />
         );
+      case "images":
+        return <ImageLibraryView />;
       case "folders":
         return (
           <MediaFoldersView
             onReadBook={handleReadBook}
             onPlayTrack={handlePlayTrack}
             onPlayVideo={handlePlayVideo}
+            onViewImage={setViewingImage}
           />
         );
       default:
@@ -653,38 +670,35 @@ export default function Home() {
                       ? "Audio | Bookish"
                       : activeView === "video"
                         ? "Videos | Bookish"
-                        : activeView === "folders"
-                          ? "Folders | Bookish"
-                          : "Bookish - Personal Book Reader"}
+                        : activeView === "images"
+                          ? "Images | Bookish"
+                          : activeView === "folders"
+                            ? "Folders | Bookish"
+                            : "Bookish - Personal Book Reader"}
         </title>
       </Head>
       <div className="flex flex-col lg:flex-row h-dvh overflow-hidden bg-background">
-        {/* Desktop sidebar - hidden when reading a book */}
-        {!currentBook && (
-          <div className="hidden lg:flex shrink-0">
-            <Sidebar
-              activeView={activeView}
-              onViewChange={handleNavViewChange}
-              username={username}
-              onLogout={handleLogout}
-              selectedCollection={selectedCollection}
-              onSelectCollection={setSelectedCollection}
-            />
-          </div>
-        )}
+        {/* Desktop sidebar */}
+        <div className="hidden lg:flex shrink-0">
+          <Sidebar
+            activeView={activeView}
+            onViewChange={handleNavViewChange}
+            username={username}
+            onLogout={handleLogout}
+            selectedCollection={selectedCollection}
+            onSelectCollection={setSelectedCollection}
+          />
+        </div>
 
         {/* Main content area */}
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-          {/* Mobile nav - hidden when reading a book */}
-          {!currentBook && (
-            <MobileNav
-              activeView={activeView}
-              onViewChange={handleNavViewChange}
-              selectedCollection={selectedCollection}
-              onSelectCollection={setSelectedCollection}
-              onLogout={handleLogout}
-            />
-          )}
+          <MobileNav
+            activeView={activeView}
+            onViewChange={handleNavViewChange}
+            selectedCollection={selectedCollection}
+            onSelectCollection={setSelectedCollection}
+            onLogout={handleLogout}
+          />
 
           <main id="main-content" className="flex-1 overflow-hidden min-h-0">
             {renderContent()}
@@ -754,6 +768,25 @@ export default function Home() {
               onEnded={handleVideoEnded}
               onDurationChange={handleVideoDurationChange}
             />
+          )}
+
+          {/* Image viewer */}
+          {viewingImage && (
+            <ImageViewer
+              image={viewingImage}
+              onClose={() => setViewingImage(null)}
+            />
+          )}
+
+          {/* Book reader overlay */}
+          {currentBook && (
+            <div className="fixed inset-0 z-50 bg-background">
+              <ReaderView
+                currentBook={currentBook}
+                onBackToLibrary={handleBackToLibrary}
+                onBookUpdate={refreshCurrentBook}
+              />
+            </div>
           )}
         </div>
       </div>

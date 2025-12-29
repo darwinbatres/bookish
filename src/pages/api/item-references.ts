@@ -26,11 +26,11 @@ async function handler(
   if (
     !itemType ||
     typeof itemType !== "string" ||
-    !["book", "audio", "video"].includes(itemType)
+    !["book", "audio", "video", "image"].includes(itemType)
   ) {
     return res.status(400).json({
       error: "Bad Request",
-      message: "itemType must be 'book', 'audio', or 'video'",
+      message: "itemType must be 'book', 'audio', 'video', or 'image'",
       statusCode: 400,
     });
   }
@@ -46,7 +46,7 @@ async function handler(
   try {
     // Get folders containing this item
     const folders = await getFoldersContainingItem(
-      itemType as "book" | "audio" | "video",
+      itemType as "book" | "audio" | "video" | "image",
       itemId
     );
 

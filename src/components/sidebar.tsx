@@ -8,6 +8,7 @@ import {
   Music,
   Video,
   Folder,
+  ImageIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ export type ViewType =
   | "favorites"
   | "audio"
   | "video"
+  | "images"
   | "folders"
   | "wishlist"
   | "stats"
@@ -40,6 +42,7 @@ const navItems: Array<{ id: ViewType; label: string; icon: typeof Library }> = [
   { id: "favorites", label: "Favorites", icon: Star },
   { id: "audio", label: "Audio", icon: Music },
   { id: "video", label: "Videos", icon: Video },
+  { id: "images", label: "Images", icon: ImageIcon },
   { id: "folders", label: "Folders", icon: Folder },
   { id: "wishlist", label: "Wishlist", icon: ShoppingCart },
   { id: "stats", label: "Stats", icon: BarChart3 },

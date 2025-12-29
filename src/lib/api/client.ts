@@ -382,6 +382,13 @@ export interface StorageStats {
     totalStorageBytes: number;
     tracksByFormat: { format: string; count: number; bytes: number }[];
   };
+  // Image stats
+  imageStats?: {
+    totalImages: number;
+    totalFavorites: number;
+    totalStorageBytes: number;
+    imagesByFormat: { format: string; count: number; bytes: number }[];
+  };
   // Media folders stats
   mediaFoldersStats?: {
     totalFolders: number;
@@ -389,6 +396,7 @@ export interface StorageStats {
     bookItems: number;
     audioItems: number;
     videoItems: number;
+    imageItems: number;
   };
   recentActivity: {
     booksAddedLast7Days: number;
@@ -407,6 +415,8 @@ export interface StorageStats {
     videosAddedLast30Days?: number;
     foldersAddedLast7Days?: number;
     foldersAddedLast30Days?: number;
+    imagesAddedLast7Days?: number;
+    imagesAddedLast30Days?: number;
   };
 }
 
@@ -557,6 +567,10 @@ export interface PublicSettings {
     allowedTypes: string[];
   };
   audio: {
+    maxSizeMB: number;
+    allowedTypes: string[];
+  };
+  images?: {
     maxSizeMB: number;
     allowedTypes: string[];
   };
@@ -1339,6 +1353,184 @@ export async function endVideoSession(
 }
 
 // ============================================================================
+// Images API (December 2024)
+// ============================================================================
+
+import type {
+  DBImage,
+  ImageFormat,
+  CreateImageInput,
+  UpdateImageInput,
+  ImageMetadata,
+} from "@/types";
+
+export interface FetchImagesPaginatedParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  sortBy?: string;
+  sortOrder?: "asc" | "desc";
+  favoritesOnly?: boolean;
+  album?: string;
+  tag?: string;
+}
+
+export async function fetchImagesPaginated(
+  params: FetchImagesPaginatedParams = {}
+): Promise<PaginatedResponse<DBImage>> {
+  const queryParams = new URLSearchParams();
+  if (params.page) queryParams.append("page", String(params.page));
+  if (params.limit) queryParams.append("limit", String(params.limit));
+  if (params.search) queryParams.append("search", params.search);
+  if (params.sortBy) queryParams.append("sortBy", params.sortBy);
+  if (params.sortOrder) queryParams.append("sortOrder", params.sortOrder);
+  if (params.favoritesOnly) queryParams.append("favoritesOnly", "true");
+  if (params.album) queryParams.append("album", params.album);
+  if (params.tag) queryParams.append("tag", params.tag);
+
+  const url = queryParams.toString()
+    ? `${API_BASE}/images?${queryParams}`
+    : `${API_BASE}/images`;
+
+  const response = await fetch(url);
+  return handleResponse<PaginatedResponse<DBImage>>(response);
+}
+
+export async function fetchImage(id: string): Promise<DBImage> {
+  const response = await fetch(`${API_BASE}/images/${id}`);
+  return handleResponse<DBImage>(response);
+}
+
+export async function createImage(input: CreateImageInput): Promise<DBImage> {
+  const response = await fetch(`${API_BASE}/images`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return handleResponse<DBImage>(response);
+}
+
+export async function updateImage(
+  id: string,
+  input: UpdateImageInput
+): Promise<DBImage> {
+  const response = await fetch(`${API_BASE}/images/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return handleResponse<DBImage>(response);
+}
+
+export async function deleteImage(id: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/images/${id}`, {
+    method: "DELETE",
+  });
+  await handleResponse<{ success: boolean }>(response);
+}
+
+export async function toggleImageFavorite(id: string): Promise<DBImage> {
+  const response = await fetch(`${API_BASE}/images/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ toggleFavorite: true }),
+  });
+  return handleResponse<DBImage>(response);
+}
+
+export async function uploadImageFile(
+  file: File,
+  onProgress?: (progress: number) => void
+): Promise<{
+  s3Key: string;
+  fileSize: number;
+  format: ImageFormat;
+  originalFilename: string;
+}> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  // Use XMLHttpRequest for progress tracking
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API_BASE}/images/upload`);
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && onProgress) {
+        const progress = Math.round((event.loaded / event.total) * 100);
+        onProgress(progress);
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const result = JSON.parse(xhr.responseText);
+          resolve(result);
+        } catch {
+          reject(new Error("Failed to parse response"));
+        }
+      } else {
+        try {
+          const error = JSON.parse(xhr.responseText);
+          reject(new Error(error.message || "Upload failed"));
+        } catch {
+          reject(new Error(`Upload failed with status ${xhr.status}`));
+        }
+      }
+    };
+
+    xhr.onerror = () => reject(new Error("Network error during upload"));
+    xhr.send(formData);
+  });
+}
+
+export function getImageStreamUrl(s3Key: string): string {
+  return `${API_BASE}/images/stream?s3Key=${encodeURIComponent(s3Key)}`;
+}
+
+export async function fetchImageMetadata(): Promise<ImageMetadata> {
+  const response = await fetch(`${API_BASE}/images/metadata`);
+  return handleResponse<ImageMetadata>(response);
+}
+
+// Alias for convenience
+export async function getImages(params: {
+  page?: number;
+  limit?: number;
+  search?: string;
+  sortBy?: string;
+  sortDir?: "asc" | "desc";
+  favoritesOnly?: boolean;
+}): Promise<PaginatedResponse<DBImage>> {
+  return fetchImagesPaginated({
+    page: params.page,
+    limit: params.limit,
+    search: params.search,
+    sortBy: params.sortBy,
+    sortOrder: params.sortDir,
+    favoritesOnly: params.favoritesOnly,
+  });
+}
+
+export async function downloadImageFile(image: DBImage): Promise<void> {
+  const url = getImageStreamUrl(image.s3Key);
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error("Failed to download image");
+  }
+  const blob = await response.blob();
+  const downloadUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = downloadUrl;
+  a.download = `${image.title}.${image.format}`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(downloadUrl);
+}
+
+// ============================================================================
 // Media Folders API (December 2024)
 // ============================================================================
 
@@ -1460,7 +1652,7 @@ export async function fetchMediaFolderItems(
 export interface FetchMediaFolderItemsParams {
   page?: number;
   limit?: number;
-  itemType?: "book" | "audio" | "video";
+  itemType?: "book" | "audio" | "video" | "image";
   search?: string;
 }
 
@@ -1487,7 +1679,7 @@ export interface SearchFolderItemsParams {
   search: string;
   page?: number;
   limit?: number;
-  itemType?: "book" | "audio" | "video";
+  itemType?: "book" | "audio" | "video" | "image";
 }
 
 export async function searchFolderItemsGlobally(
@@ -1566,7 +1758,7 @@ export interface ItemReferences {
 }
 
 export async function fetchItemReferences(
-  itemType: "book" | "audio" | "video",
+  itemType: "book" | "audio" | "video" | "image",
   itemId: string
 ): Promise<ItemReferences> {
   const params = new URLSearchParams({ itemType, itemId });

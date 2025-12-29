@@ -40,6 +40,14 @@ export interface StorageStats {
     totalStorageBytes: number;
     tracksByFormat: { format: string; count: number; bytes: number }[];
   };
+  // Image stats (December 2024)
+  imageStats: {
+    totalImages: number;
+    totalFavorites: number;
+    totalViews: number;
+    totalStorageBytes: number;
+    imagesByFormat: { format: string; count: number; bytes: number }[];
+  };
   // Media folders stats (December 2024)
   mediaFoldersStats: {
     totalFolders: number;
@@ -47,6 +55,7 @@ export interface StorageStats {
     bookItems: number;
     audioItems: number;
     videoItems: number;
+    imageItems: number;
   };
   recentActivity: {
     booksAddedLast7Days: number;
@@ -63,6 +72,8 @@ export interface StorageStats {
     audioTracksAddedLast30Days: number;
     videosAddedLast7Days: number;
     videosAddedLast30Days: number;
+    imagesAddedLast7Days: number;
+    imagesAddedLast30Days: number;
     foldersAddedLast7Days: number;
     foldersAddedLast30Days: number;
   };
@@ -113,6 +124,13 @@ export async function getStorageStats(): Promise<StorageStats> {
     videoSizeResult,
     videoFormatResult,
     recentVideoResult,
+    // Image queries (December 2024)
+    imageCountResult,
+    imageFavoritesResult,
+    imageViewsResult,
+    imageSizeResult,
+    imageFormatResult,
+    recentImagesResult,
     // Media folders queries (December 2024)
     mediaFoldersResult,
     folderItemsResult,
@@ -350,6 +368,55 @@ export async function getStorageStats(): Promise<StorageStats> {
       )
       .catch(() => ({ rows: [{ last7: "0", last30: "0" }] })),
 
+    // Image queries (December 2024)
+    // Total images
+    pool
+      .query<{ count: string }>("SELECT COUNT(*) as count FROM images")
+      .catch(() => ({ rows: [{ count: "0" }] })),
+
+    // Image: Total favorites
+    pool
+      .query<{
+        count: string;
+      }>("SELECT COUNT(*) as count FROM images WHERE is_favorite = true")
+      .catch(() => ({ rows: [{ count: "0" }] })),
+
+    // Image: Total views
+    pool
+      .query<{
+        total: string;
+      }>("SELECT COALESCE(SUM(view_count), 0) as total FROM images")
+      .catch(() => ({ rows: [{ total: "0" }] })),
+
+    // Image: Total storage size
+    pool
+      .query<{
+        total: string;
+      }>("SELECT COALESCE(SUM(file_size), 0) as total FROM images")
+      .catch(() => ({ rows: [{ total: "0" }] })),
+
+    // Image: Images by format
+    pool
+      .query<{ format: string; count: string; bytes: string }>(
+        `SELECT format, 
+              COUNT(*) as count, 
+              COALESCE(SUM(file_size), 0) as bytes 
+       FROM images 
+       GROUP BY format 
+       ORDER BY count DESC`
+      )
+      .catch(() => ({ rows: [] })),
+
+    // Recent images activity
+    pool
+      .query<{ last7: string; last30: string }>(
+        `SELECT 
+        COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days') as last7,
+        COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '30 days') as last30
+       FROM images`
+      )
+      .catch(() => ({ rows: [{ last7: "0", last30: "0" }] })),
+
     // Media folders queries (December 2024)
     // Total folders
     pool
@@ -358,16 +425,23 @@ export async function getStorageStats(): Promise<StorageStats> {
 
     // Folder items breakdown
     pool
-      .query<{ total: string; books: string; audio: string; video: string }>(
+      .query<{
+        total: string;
+        books: string;
+        audio: string;
+        video: string;
+        images: string;
+      }>(
         `SELECT 
         COUNT(*) as total,
         COUNT(*) FILTER (WHERE item_type = 'book') as books,
         COUNT(*) FILTER (WHERE item_type = 'audio') as audio,
-        COUNT(*) FILTER (WHERE item_type = 'video') as video
+        COUNT(*) FILTER (WHERE item_type = 'video') as video,
+        COUNT(*) FILTER (WHERE item_type = 'image') as images
        FROM media_folder_items`
       )
       .catch(() => ({
-        rows: [{ total: "0", books: "0", audio: "0", video: "0" }],
+        rows: [{ total: "0", books: "0", audio: "0", video: "0", images: "0" }],
       })),
 
     // Recent folders activity
@@ -446,6 +520,14 @@ export async function getStorageStats(): Promise<StorageStats> {
         recentVideoResult.rows[0]?.last30 || "0",
         10
       ),
+      imagesAddedLast7Days: parseInt(
+        recentImagesResult.rows[0]?.last7 || "0",
+        10
+      ),
+      imagesAddedLast30Days: parseInt(
+        recentImagesResult.rows[0]?.last30 || "0",
+        10
+      ),
       foldersAddedLast7Days: parseInt(
         recentFoldersResult.rows[0]?.last7 || "0",
         10
@@ -500,6 +582,18 @@ export async function getStorageStats(): Promise<StorageStats> {
         bytes: parseInt(row.bytes, 10),
       })),
     },
+    // Image stats (December 2024)
+    imageStats: {
+      totalImages: parseInt(imageCountResult.rows[0]?.count || "0", 10),
+      totalFavorites: parseInt(imageFavoritesResult.rows[0]?.count || "0", 10),
+      totalViews: parseInt(imageViewsResult.rows[0]?.total || "0", 10),
+      totalStorageBytes: parseInt(imageSizeResult.rows[0]?.total || "0", 10),
+      imagesByFormat: (imageFormatResult.rows || []).map((row) => ({
+        format: row.format,
+        count: parseInt(row.count, 10),
+        bytes: parseInt(row.bytes, 10),
+      })),
+    },
     // Media folders stats (December 2024)
     mediaFoldersStats: {
       totalFolders: parseInt(mediaFoldersResult.rows[0]?.count || "0", 10),
@@ -507,6 +601,7 @@ export async function getStorageStats(): Promise<StorageStats> {
       bookItems: parseInt(folderItemsResult.rows[0]?.books || "0", 10),
       audioItems: parseInt(folderItemsResult.rows[0]?.audio || "0", 10),
       videoItems: parseInt(folderItemsResult.rows[0]?.video || "0", 10),
+      imageItems: parseInt(folderItemsResult.rows[0]?.images || "0", 10),
     },
   };
 }

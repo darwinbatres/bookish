@@ -231,12 +231,12 @@ export async function getWishlistCount(): Promise<number> {
 
 /**
  * Search for existing media matching a title (for duplicate detection)
- * Searches across: books, audio_tracks, video_tracks, AND wishlist
+ * Searches across: books, audio_tracks, video_tracks, images, AND wishlist
  */
 export interface DuplicateMatch {
   id: string;
   title: string;
-  type: "book" | "audio" | "video" | "wishlist";
+  type: "book" | "audio" | "video" | "image" | "wishlist";
   author?: string;
 }
 
@@ -269,6 +269,12 @@ export async function searchForDuplicates(
     -- Video tracks in library
     SELECT id, title, 'video' as type, NULL as author
     FROM video_tracks WHERE LOWER(title) LIKE $1
+    
+    UNION ALL
+    
+    -- Images in library
+    SELECT id, title, 'image' as type, NULL as author
+    FROM images WHERE LOWER(title) LIKE $1
     
     UNION ALL
     

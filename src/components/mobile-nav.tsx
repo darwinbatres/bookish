@@ -10,6 +10,7 @@ import {
   Music,
   Video,
   Folder,
+  ImageIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
@@ -153,6 +154,21 @@ export function MobileNav({
               >
                 <Video className="w-5 h-5" />
                 Videos
+              </button>
+              <button
+                onClick={() => {
+                  onViewChange("images");
+                  setIsOpen(false);
+                }}
+                className={cn(
+                  "w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-medium transition-colors",
+                  activeView === "images"
+                    ? "bg-secondary text-secondary-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-secondary/60 active:bg-secondary"
+                )}
+              >
+                <ImageIcon className="w-5 h-5" />
+                Images
               </button>
               <button
                 onClick={() => {

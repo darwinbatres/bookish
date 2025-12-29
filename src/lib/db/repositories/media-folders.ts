@@ -29,6 +29,7 @@ interface DBMediaFolderRow {
   book_count?: string;
   audio_count?: string;
   video_count?: string;
+  image_count?: string;
   created_at: Date;
   updated_at: Date;
 }
@@ -73,6 +74,7 @@ function mapDBRowToMediaFolder(row: DBMediaFolderRow): DBMediaFolder {
     bookCount: row.book_count ? parseInt(row.book_count, 10) : undefined,
     audioCount: row.audio_count ? parseInt(row.audio_count, 10) : undefined,
     videoCount: row.video_count ? parseInt(row.video_count, 10) : undefined,
+    imageCount: row.image_count ? parseInt(row.image_count, 10) : undefined,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
@@ -136,7 +138,8 @@ export async function getAllMediaFolders(): Promise<DBMediaFolder[]> {
       COUNT(mfi.id)::text as item_count,
       COUNT(CASE WHEN mfi.item_type = 'book' THEN 1 END)::text as book_count,
       COUNT(CASE WHEN mfi.item_type = 'audio' THEN 1 END)::text as audio_count,
-      COUNT(CASE WHEN mfi.item_type = 'video' THEN 1 END)::text as video_count
+      COUNT(CASE WHEN mfi.item_type = 'video' THEN 1 END)::text as video_count,
+      COUNT(CASE WHEN mfi.item_type = 'image' THEN 1 END)::text as image_count
     FROM media_folders mf
     LEFT JOIN media_folder_items mfi ON mfi.folder_id = mf.id
     GROUP BY mf.id
@@ -197,7 +200,8 @@ export async function getMediaFoldersWithPagination(
       COUNT(mfi.id)::text as item_count,
       COUNT(CASE WHEN mfi.item_type = 'book' THEN 1 END)::text as book_count,
       COUNT(CASE WHEN mfi.item_type = 'audio' THEN 1 END)::text as audio_count,
-      COUNT(CASE WHEN mfi.item_type = 'video' THEN 1 END)::text as video_count
+      COUNT(CASE WHEN mfi.item_type = 'video' THEN 1 END)::text as video_count,
+      COUNT(CASE WHEN mfi.item_type = 'image' THEN 1 END)::text as image_count
     FROM media_folders mf
     LEFT JOIN media_folder_items mfi ON mfi.folder_id = mf.id
     ${whereClause}
@@ -235,7 +239,8 @@ export async function getMediaFolderById(
       COUNT(mfi.id)::text as item_count,
       COUNT(CASE WHEN mfi.item_type = 'book' THEN 1 END)::text as book_count,
       COUNT(CASE WHEN mfi.item_type = 'audio' THEN 1 END)::text as audio_count,
-      COUNT(CASE WHEN mfi.item_type = 'video' THEN 1 END)::text as video_count
+      COUNT(CASE WHEN mfi.item_type = 'video' THEN 1 END)::text as video_count,
+      COUNT(CASE WHEN mfi.item_type = 'image' THEN 1 END)::text as image_count
     FROM media_folders mf
     LEFT JOIN media_folder_items mfi ON mfi.folder_id = mf.id
     WHERE mf.id = $1
@@ -354,7 +359,7 @@ export async function deleteMediaFolder(id: string): Promise<boolean> {
 interface FolderItemsPaginationParams {
   page?: number;
   limit?: number;
-  itemType?: "book" | "audio" | "video";
+  itemType?: "book" | "audio" | "video" | "image";
   search?: string;
 }
 
@@ -363,20 +368,20 @@ export async function getFolderItems(
 ): Promise<DBMediaFolderItemWithDetails[]> {
   const pool = getPool();
 
-  // Complex query that joins with books, audio_tracks, and video_tracks
+  // Complex query that joins with books, audio_tracks, video_tracks, and images
   // Includes favorite status, folder count, S3 key, and bookmarks count for consistency with library views
   const result = await pool.query<DBMediaFolderItemRow>(
     `SELECT 
       mfi.*,
-      COALESCE(b.title, a.title, v.title) as item_title,
-      COALESCE(b.author, a.artist) as item_author,
-      COALESCE(b.cover_url, a.cover_url, v.cover_url) as item_cover_url,
+      COALESCE(b.title, a.title, v.title, i.title) as item_title,
+      COALESCE(b.author, a.artist, i.album) as item_author,
+      COALESCE(b.cover_url, a.cover_url, v.cover_url, i.thumbnail_url) as item_cover_url,
       COALESCE(a.duration_seconds, v.duration_seconds) as item_duration,
       COALESCE(b.current_page, a.current_position, v.current_position) as item_progress,
       COALESCE(b.total_pages, a.duration_seconds, v.duration_seconds) as item_total,
-      COALESCE(b.format, a.format, v.format) as item_format,
-      COALESCE(b.is_favorite, a.is_favorite, v.is_favorite) as item_is_favorite,
-      COALESCE(b.s3_key, a.s3_key, v.s3_key) as item_s3_key,
+      COALESCE(b.format, a.format, v.format, i.format) as item_format,
+      COALESCE(b.is_favorite, a.is_favorite, v.is_favorite, i.is_favorite) as item_is_favorite,
+      COALESCE(b.s3_key, a.s3_key, v.s3_key, i.s3_key) as item_s3_key,
       (SELECT COUNT(*) FROM media_folder_items mfi2 WHERE mfi2.item_id = mfi.item_id AND mfi2.item_type = mfi.item_type)::text as item_folder_count,
       (CASE 
         WHEN mfi.item_type = 'audio' THEN (SELECT COUNT(*) FROM audio_bookmarks ab WHERE ab.track_id = mfi.item_id)
@@ -387,6 +392,7 @@ export async function getFolderItems(
     LEFT JOIN books b ON mfi.item_type = 'book' AND mfi.item_id = b.id
     LEFT JOIN audio_tracks a ON mfi.item_type = 'audio' AND mfi.item_id = a.id
     LEFT JOIN video_tracks v ON mfi.item_type = 'video' AND mfi.item_id = v.id
+    LEFT JOIN images i ON mfi.item_type = 'image' AND mfi.item_id = i.id
     WHERE mfi.folder_id = $1
     ORDER BY mfi.sort_order, mfi.added_at`,
     [folderId]
@@ -419,9 +425,9 @@ export async function getFolderItemsWithPagination(
   if (search && search.trim()) {
     const searchTerm = `%${search.trim()}%`;
     whereClauses.push(`(
-      COALESCE(b.title, a.title, v.title) ILIKE $${paramIndex}
-      OR COALESCE(b.author, a.artist, '') ILIKE $${paramIndex}
-      OR COALESCE(b.format, a.format, v.format, '') ILIKE $${paramIndex}
+      COALESCE(b.title, a.title, v.title, i.title) ILIKE $${paramIndex}
+      OR COALESCE(b.author, a.artist, i.album, '') ILIKE $${paramIndex}
+      OR COALESCE(b.format, a.format, v.format, i.format, '') ILIKE $${paramIndex}
       OR COALESCE(mfi.notes, '') ILIKE $${paramIndex}
       OR COALESCE(a.album, '') ILIKE $${paramIndex}
     )`);
@@ -438,6 +444,7 @@ export async function getFolderItemsWithPagination(
     LEFT JOIN books b ON mfi.item_type = 'book' AND mfi.item_id = b.id
     LEFT JOIN audio_tracks a ON mfi.item_type = 'audio' AND mfi.item_id = a.id
     LEFT JOIN video_tracks v ON mfi.item_type = 'video' AND mfi.item_id = v.id
+    LEFT JOIN images i ON mfi.item_type = 'image' AND mfi.item_id = i.id
     WHERE ${whereClause}
   `;
   const countResult = await pool.query<{ count: string }>(
@@ -450,15 +457,15 @@ export async function getFolderItemsWithPagination(
   const result = await pool.query<DBMediaFolderItemRow>(
     `SELECT 
       mfi.*,
-      COALESCE(b.title, a.title, v.title) as item_title,
-      COALESCE(b.author, a.artist) as item_author,
-      COALESCE(b.cover_url, a.cover_url, v.cover_url) as item_cover_url,
+      COALESCE(b.title, a.title, v.title, i.title) as item_title,
+      COALESCE(b.author, a.artist, i.album) as item_author,
+      COALESCE(b.cover_url, a.cover_url, v.cover_url, i.thumbnail_url) as item_cover_url,
       COALESCE(a.duration_seconds, v.duration_seconds) as item_duration,
       COALESCE(b.current_page, a.current_position, v.current_position) as item_progress,
       COALESCE(b.total_pages, a.duration_seconds, v.duration_seconds) as item_total,
-      COALESCE(b.format, a.format, v.format) as item_format,
-      COALESCE(b.is_favorite, a.is_favorite, v.is_favorite) as item_is_favorite,
-      COALESCE(b.s3_key, a.s3_key, v.s3_key) as item_s3_key,
+      COALESCE(b.format, a.format, v.format, i.format) as item_format,
+      COALESCE(b.is_favorite, a.is_favorite, v.is_favorite, i.is_favorite) as item_is_favorite,
+      COALESCE(b.s3_key, a.s3_key, v.s3_key, i.s3_key) as item_s3_key,
       (SELECT COUNT(*) FROM media_folder_items mfi2 WHERE mfi2.item_id = mfi.item_id AND mfi2.item_type = mfi.item_type)::text as item_folder_count,
       (CASE 
         WHEN mfi.item_type = 'audio' THEN (SELECT COUNT(*) FROM audio_bookmarks ab WHERE ab.track_id = mfi.item_id)
@@ -469,6 +476,7 @@ export async function getFolderItemsWithPagination(
     LEFT JOIN books b ON mfi.item_type = 'book' AND mfi.item_id = b.id
     LEFT JOIN audio_tracks a ON mfi.item_type = 'audio' AND mfi.item_id = a.id
     LEFT JOIN video_tracks v ON mfi.item_type = 'video' AND mfi.item_id = v.id
+    LEFT JOIN images i ON mfi.item_type = 'image' AND mfi.item_id = i.id
     WHERE ${whereClause}
     ORDER BY mfi.sort_order, mfi.added_at
     LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
@@ -647,7 +655,7 @@ export async function removeItemFromAllFolders(
 interface GlobalItemsSearchParams {
   page?: number;
   limit?: number;
-  itemType?: "book" | "audio" | "video";
+  itemType?: "book" | "audio" | "video" | "image";
   search: string; // Required for global search
 }
 
@@ -667,9 +675,9 @@ export async function searchItemsAcrossAllFolders(
   // Also search by folder name/description so items in matching folders appear
   const searchTerm = `%${search.trim()}%`;
   whereClauses.push(`(
-    COALESCE(b.title, a.title, v.title) ILIKE $${paramIndex}
-    OR COALESCE(b.author, a.artist, '') ILIKE $${paramIndex}
-    OR COALESCE(b.format, a.format, v.format, '') ILIKE $${paramIndex}
+    COALESCE(b.title, a.title, v.title, i.title) ILIKE $${paramIndex}
+    OR COALESCE(b.author, a.artist, i.album, '') ILIKE $${paramIndex}
+    OR COALESCE(b.format, a.format, v.format, i.format, '') ILIKE $${paramIndex}
     OR COALESCE(mfi.notes, '') ILIKE $${paramIndex}
     OR COALESCE(a.album, '') ILIKE $${paramIndex}
     OR mf.name ILIKE $${paramIndex}
@@ -694,6 +702,7 @@ export async function searchItemsAcrossAllFolders(
     LEFT JOIN books b ON mfi.item_type = 'book' AND mfi.item_id = b.id
     LEFT JOIN audio_tracks a ON mfi.item_type = 'audio' AND mfi.item_id = a.id
     LEFT JOIN video_tracks v ON mfi.item_type = 'video' AND mfi.item_id = v.id
+    LEFT JOIN images i ON mfi.item_type = 'image' AND mfi.item_id = i.id
     WHERE ${whereClause}
   `;
   const countResult = await pool.query<{ count: string }>(
@@ -707,15 +716,15 @@ export async function searchItemsAcrossAllFolders(
     SELECT 
       mfi.*,
       mf.name as folder_name,
-      COALESCE(b.title, a.title, v.title) as item_title,
-      COALESCE(b.author, a.artist) as item_author,
-      COALESCE(b.cover_url, a.cover_url, v.cover_url) as item_cover_url,
+      COALESCE(b.title, a.title, v.title, i.title) as item_title,
+      COALESCE(b.author, a.artist, i.album) as item_author,
+      COALESCE(b.cover_url, a.cover_url, v.cover_url, i.thumbnail_url) as item_cover_url,
       COALESCE(a.duration_seconds, v.duration_seconds) as item_duration,
       COALESCE(b.current_page, a.current_position, v.current_position) as item_progress,
       COALESCE(b.total_pages, a.duration_seconds, v.duration_seconds) as item_total,
-      COALESCE(b.format, a.format, v.format) as item_format,
-      COALESCE(b.is_favorite, a.is_favorite, v.is_favorite) as item_is_favorite,
-      COALESCE(b.s3_key, a.s3_key, v.s3_key) as item_s3_key,
+      COALESCE(b.format, a.format, v.format, i.format) as item_format,
+      COALESCE(b.is_favorite, a.is_favorite, v.is_favorite, i.is_favorite) as item_is_favorite,
+      COALESCE(b.s3_key, a.s3_key, v.s3_key, i.s3_key) as item_s3_key,
       (SELECT COUNT(*) FROM media_folder_items mfi2 WHERE mfi2.item_id = mfi.item_id AND mfi2.item_type = mfi.item_type)::text as item_folder_count,
       (CASE 
         WHEN mfi.item_type = 'audio' THEN (SELECT COUNT(*) FROM audio_bookmarks ab WHERE ab.track_id = mfi.item_id)
@@ -727,8 +736,9 @@ export async function searchItemsAcrossAllFolders(
     LEFT JOIN books b ON mfi.item_type = 'book' AND mfi.item_id = b.id
     LEFT JOIN audio_tracks a ON mfi.item_type = 'audio' AND mfi.item_id = a.id
     LEFT JOIN video_tracks v ON mfi.item_type = 'video' AND mfi.item_id = v.id
+    LEFT JOIN images i ON mfi.item_type = 'image' AND mfi.item_id = i.id
     WHERE ${whereClause}
-    ORDER BY COALESCE(b.title, a.title, v.title)
+    ORDER BY COALESCE(b.title, a.title, v.title, i.title)
     LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
   `;
 

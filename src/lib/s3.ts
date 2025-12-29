@@ -382,3 +382,68 @@ export function generateMediaFolderCoverS3Key(
   const timestamp = Date.now();
   return `folder-covers/${folderId}/${timestamp}.${ext}`;
 }
+
+// ============================================================================
+// Image Support (December 2024)
+// ============================================================================
+
+/**
+ * Generate a unique S3 key for an image file
+ */
+export function generateImageS3Key(imageId: string, filename: string): string {
+  const ext = filename.split(".").pop()?.toLowerCase() || "jpg";
+  const timestamp = Date.now();
+  return `images/${imageId}/${timestamp}.${ext}`;
+}
+
+/**
+ * Generate a unique S3 key for an image thumbnail
+ */
+export function generateImageThumbnailS3Key(
+  imageId: string,
+  filename: string
+): string {
+  const ext = filename.split(".").pop()?.toLowerCase() || "jpg";
+  const timestamp = Date.now();
+  return `image-thumbnails/${imageId}/${timestamp}.${ext}`;
+}
+
+/**
+ * Get allowed content types for image uploads
+ */
+export function getAllowedImageContentTypes(): string[] {
+  return [
+    "image/jpeg", // jpg, jpeg
+    "image/png", // png
+    "image/gif", // gif
+    "image/webp", // webp
+    "image/svg+xml", // svg
+    "image/bmp", // bmp
+    "image/avif", // avif
+    "image/heic", // heic
+    "image/heif", // heif (alternate)
+  ];
+}
+
+/**
+ * Validate content type for image uploads
+ */
+export function isValidImageContentType(contentType: string): boolean {
+  return getAllowedImageContentTypes().includes(contentType.toLowerCase());
+}
+
+/**
+ * Get image format from content type
+ */
+export function getImageFormatFromContentType(contentType: string): string {
+  const ct = contentType.toLowerCase();
+  if (ct.includes("jpeg") || ct.includes("jpg")) return "jpg";
+  if (ct.includes("png")) return "png";
+  if (ct.includes("gif")) return "gif";
+  if (ct.includes("webp")) return "webp";
+  if (ct.includes("svg")) return "svg";
+  if (ct.includes("bmp")) return "bmp";
+  if (ct.includes("avif")) return "avif";
+  if (ct.includes("heic") || ct.includes("heif")) return "heic";
+  return "jpg"; // default
+}

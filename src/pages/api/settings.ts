@@ -10,6 +10,8 @@ import {
   setAudioMaxSizeMB,
   getVideoMaxSizeMB,
   setVideoMaxSizeMB,
+  getImageMaxSizeMB,
+  setImageMaxSizeMB,
 } from "@/lib/db";
 
 export interface PublicSettings {
@@ -35,6 +37,10 @@ export interface PublicSettings {
     allowedTypes: string[];
   };
   video: {
+    maxSizeMB: number;
+    allowedTypes: string[];
+  };
+  images: {
     maxSizeMB: number;
     allowedTypes: string[];
   };
@@ -65,6 +71,9 @@ interface UpdateSettingsRequest {
   video?: {
     maxSizeMB?: number;
   };
+  images?: {
+    maxSizeMB?: number;
+  };
 }
 
 async function handler(
@@ -77,13 +86,19 @@ async function handler(
   if (req.method === "GET") {
     try {
       // Get max sizes from database (with defaults)
-      const [maxSizeMB, coverMaxSizeMB, audioMaxSizeMB, videoMaxSizeMB] =
-        await Promise.all([
-          getUploadMaxSizeMB(),
-          getCoverMaxSizeMB(),
-          getAudioMaxSizeMB(),
-          getVideoMaxSizeMB(),
-        ]);
+      const [
+        maxSizeMB,
+        coverMaxSizeMB,
+        audioMaxSizeMB,
+        videoMaxSizeMB,
+        imageMaxSizeMB,
+      ] = await Promise.all([
+        getUploadMaxSizeMB(),
+        getCoverMaxSizeMB(),
+        getAudioMaxSizeMB(),
+        getVideoMaxSizeMB(),
+        getImageMaxSizeMB(),
+      ]);
 
       const settings: PublicSettings = {
         app: {
@@ -124,6 +139,17 @@ async function handler(
             "video/quicktime",
             "video/x-msvideo",
             "video/x-m4v",
+          ],
+        },
+        images: {
+          maxSizeMB: imageMaxSizeMB,
+          allowedTypes: [
+            "image/jpeg",
+            "image/png",
+            "image/webp",
+            "image/gif",
+            "image/avif",
+            "image/svg+xml",
           ],
         },
         storage: {
@@ -222,6 +248,24 @@ async function handler(
         }
 
         await setVideoMaxSizeMB(Math.floor(videoMaxSizeMB));
+      }
+
+      // Validate and update max image size
+      if (body.images?.maxSizeMB !== undefined) {
+        const imageMaxSizeMB = body.images.maxSizeMB;
+
+        // Validate: must be a positive number, max 100MB for images
+        if (
+          typeof imageMaxSizeMB !== "number" ||
+          imageMaxSizeMB < 1 ||
+          imageMaxSizeMB > 100
+        ) {
+          return res.status(400).json({
+            error: "images.maxSizeMB must be between 1 and 100 MB",
+          });
+        }
+
+        await setImageMaxSizeMB(Math.floor(imageMaxSizeMB));
       }
 
       return res.status(200).json({ success: true });

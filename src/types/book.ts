@@ -11,7 +11,7 @@ export type WishlistPriority = 0 | 1 | 2; // 0 = low, 1 = medium, 2 = high
 /**
  * Media types for wishlist items
  */
-export type WishlistMediaType = "book" | "audio" | "video";
+export type WishlistMediaType = "book" | "audio" | "video" | "image";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Database types (PostgreSQL schema)

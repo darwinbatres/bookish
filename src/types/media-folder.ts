@@ -1,11 +1,11 @@
 /**
  * Media Folder Types for Bookish
- * Allows grouping books, audio, and videos into organized folders with notes
+ * Allows grouping books, audio, videos, and images into organized folders with notes
  * Created: December 2024
  */
 
 // Media item types that can be added to folders
-export type MediaItemType = "book" | "audio" | "video";
+export type MediaItemType = "book" | "audio" | "video" | "image";
 
 /**
  * Represents a media folder in the PostgreSQL database
@@ -31,6 +31,7 @@ export interface DBMediaFolder {
   bookCount?: number;
   audioCount?: number;
   videoCount?: number;
+  imageCount?: number;
   /** ISO timestamp when created */
   createdAt: string;
   /** ISO timestamp when last updated */

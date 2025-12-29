@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useRouter } from "next/router";
 import dynamic from "next/dynamic";
 import {
   Folder,
@@ -71,11 +72,13 @@ import {
   toggleBookFavorite,
   toggleAudioFavorite,
   toggleVideoFavorite,
+  toggleImageFavorite,
   searchFolderItemsGlobally,
 } from "@/lib/api/client";
 import { BookCover } from "@/components/book-cover";
 import { AudioCover } from "@/components/audio-cover";
 import { VideoCover } from "@/components/video-cover";
+import { ImageCover } from "@/components/image-cover";
 import { FolderCover } from "@/components/folder-cover";
 import { FolderUpload } from "@/components/folder-upload";
 import { MembershipBadge } from "@/components/membership-badge";
@@ -91,6 +94,7 @@ import type {
   DBBook,
   DBAudioTrack,
   DBVideoTrack,
+  DBImage,
   BookFormat,
   LibraryViewMode,
 } from "@/types";
@@ -145,18 +149,24 @@ interface MediaFoldersViewProps {
   ) => void;
   /** Callback when user wants to play a video */
   onPlayVideo?: (video: DBVideoTrack, streamUrl: string) => void;
+  /** Callback when user wants to view an image */
+  onViewImage?: (image: DBImage) => void;
 }
 
 export function MediaFoldersView({
   onReadBook,
   onPlayTrack,
   onPlayVideo,
+  onViewImage,
 }: MediaFoldersViewProps) {
+  const router = useRouter();
   const [folders, setFolders] = useState<DBMediaFolder[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedFolder, setSelectedFolder] = useState<DBMediaFolder | null>(
     null
   );
+  // Track if we've done initial URL sync
+  const initialUrlSyncDone = useRef(false);
   const [folderItems, setFolderItems] = useState<
     DBMediaFolderItemWithDetails[]
   >([]);
@@ -191,7 +201,7 @@ export function MediaFoldersView({
 
   // Filter by item type
   const [filterType, setFilterType] = useState<
-    "all" | "book" | "audio" | "video"
+    "all" | "book" | "audio" | "video" | "image"
   >("all");
 
   // View mode for folder items (persisted)
@@ -354,6 +364,20 @@ export function MediaFoldersView({
   useEffect(() => {
     loadFolders();
   }, [loadFolders]);
+
+  // Restore selected folder from URL on initial load
+  useEffect(() => {
+    if (initialUrlSyncDone.current || loading || folders.length === 0) return;
+
+    const folderId = router.query.folder;
+    if (folderId && typeof folderId === "string") {
+      const folder = folders.find((f) => f.id === folderId);
+      if (folder) {
+        setSelectedFolder(folder);
+      }
+    }
+    initialUrlSyncDone.current = true;
+  }, [router.query.folder, folders, loading]);
 
   // Search items globally when search changes (only when not in a folder)
   useEffect(() => {
@@ -596,6 +620,8 @@ export function MediaFoldersView({
         return <Music className="w-4 h-4 text-violet-500" />;
       case "video":
         return <Video className="w-4 h-4 text-rose-500" />;
+      case "image":
+        return <ImageIcon className="w-4 h-4 text-emerald-500" />;
       default:
         return null;
     }
@@ -657,6 +683,19 @@ export function MediaFoldersView({
           toast.dismiss();
           toast.error("Failed to play video");
         }
+      } else if (item.itemType === "image" && onViewImage) {
+        toast.loading("Loading image...");
+        try {
+          // Fetch full image info
+          const response = await fetch(`/api/images/${item.itemId}`);
+          if (!response.ok) throw new Error("Failed to load image");
+          const image: DBImage = await response.json();
+          toast.dismiss();
+          onViewImage(image);
+        } catch {
+          toast.dismiss();
+          toast.error("Failed to view image");
+        }
       } else {
         toast.error("No player available for this media type");
       }
@@ -711,6 +750,8 @@ export function MediaFoldersView({
           await toggleAudioFavorite(item.itemId, newFavorite);
         } else if (item.itemType === "video") {
           await toggleVideoFavorite(item.itemId, newFavorite);
+        } else if (item.itemType === "image") {
+          await toggleImageFavorite(item.itemId);
         }
         // Update local state
         setFolderItems((prev) =>
@@ -729,12 +770,28 @@ export function MediaFoldersView({
     []
   );
 
-  // Handle selecting a folder - clears items search
-  const handleSelectFolder = useCallback((folder: DBMediaFolder | null) => {
-    setItemsSearch("");
-    setItemsPage(1);
-    setSelectedFolder(folder);
-  }, []);
+  // Handle selecting a folder - clears items search and updates URL
+  const handleSelectFolder = useCallback(
+    (folder: DBMediaFolder | null) => {
+      setItemsSearch("");
+      setItemsPage(1);
+      setSelectedFolder(folder);
+
+      // Update URL to include folder ID
+      if (folder) {
+        router.replace(
+          { query: { ...router.query, folder: folder.id } },
+          undefined,
+          { shallow: true }
+        );
+      } else {
+        // Remove folder from URL when going back
+        const { folder: _, ...rest } = router.query;
+        router.replace({ query: rest }, undefined, { shallow: true });
+      }
+    },
+    [router]
+  );
 
   // Handle downloading an item
   const handleDownloadItem = useCallback(
@@ -906,6 +963,13 @@ export function MediaFoldersView({
                                 <VideoCover
                                   coverUrl={item.itemCoverUrl}
                                   title={item.itemTitle || "Video"}
+                                  className="w-full h-full"
+                                />
+                              )}
+                              {item.itemType === "image" && (
+                                <ImageCover
+                                  s3Key={item.itemS3Key}
+                                  title={item.itemTitle || "Image"}
                                   className="w-full h-full"
                                 />
                               )}
@@ -1210,6 +1274,15 @@ export function MediaFoldersView({
                         <Video className="w-3 h-3 mr-1" />
                         Video
                       </Button>
+                      <Button
+                        variant={filterType === "image" ? "secondary" : "ghost"}
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => setFilterType("image")}
+                      >
+                        <ImageIcon className="w-3 h-3 mr-1" />
+                        Images
+                      </Button>
                     </div>
                   </div>
                   {itemsTotalCount > 0 && (
@@ -1291,6 +1364,14 @@ export function MediaFoldersView({
                           {item.itemType === "video" && (
                             <VideoCover
                               coverUrl={item.itemCoverUrl}
+                              title={item.itemTitle || "Untitled"}
+                              className="w-full h-full"
+                              iconClassName="w-12 h-12"
+                            />
+                          )}
+                          {item.itemType === "image" && (
+                            <ImageCover
+                              s3Key={item.itemS3Key}
                               title={item.itemTitle || "Untitled"}
                               className="w-full h-full"
                               iconClassName="w-12 h-12"
@@ -1476,6 +1557,14 @@ export function MediaFoldersView({
                           {item.itemType === "video" && (
                             <VideoCover
                               coverUrl={item.itemCoverUrl}
+                              title={item.itemTitle || "Untitled"}
+                              className="w-full h-full"
+                              iconClassName="w-5 h-5"
+                            />
+                          )}
+                          {item.itemType === "image" && (
+                            <ImageCover
+                              s3Key={item.itemS3Key}
                               title={item.itemTitle || "Untitled"}
                               className="w-full h-full"
                               iconClassName="w-5 h-5"
@@ -1680,6 +1769,14 @@ export function MediaFoldersView({
                           {item.itemType === "video" && (
                             <VideoCover
                               coverUrl={item.itemCoverUrl}
+                              title={item.itemTitle || "Untitled"}
+                              className="w-full h-full"
+                              iconClassName="w-10 h-10"
+                            />
+                          )}
+                          {item.itemType === "image" && (
+                            <ImageCover
+                              s3Key={item.itemS3Key}
                               title={item.itemTitle || "Untitled"}
                               className="w-full h-full"
                               iconClassName="w-10 h-10"

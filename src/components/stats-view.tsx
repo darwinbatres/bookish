@@ -342,6 +342,35 @@ export function StatsView() {
         </div>
       )}
 
+      {/* Image Library */}
+      {stats.imageStats && (
+        <div className="space-y-4">
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+            Image Library
+          </h3>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <StatCard
+              icon={ImageIcon}
+              label="Total Images"
+              value={stats.imageStats.totalImages}
+              iconColor="text-pink-500"
+            />
+            <StatCard
+              icon={Star}
+              label="Favorites"
+              value={stats.imageStats.totalFavorites}
+              iconColor="text-amber-500"
+            />
+            <StatCard
+              icon={HardDrive}
+              label="Image Storage"
+              value={formatBytes(stats.imageStats.totalStorageBytes)}
+              iconColor="text-pink-500"
+            />
+          </div>
+        </div>
+      )}
+
       {/* Media Folders */}
       {stats.mediaFoldersStats && (
         <div className="space-y-4">
@@ -381,6 +410,12 @@ export function StatsView() {
               value={stats.mediaFoldersStats.videoItems}
               iconColor="text-rose-500"
             />
+            <StatCard
+              icon={ImageIcon}
+              label="Images in Folders"
+              value={stats.mediaFoldersStats.imageItems}
+              iconColor="text-pink-500"
+            />
           </div>
         </div>
       )}
@@ -412,14 +447,21 @@ export function StatsView() {
             iconColor="text-rose-500"
           />
           <StatCard
+            icon={ImageIcon}
+            label="Image Files"
+            value={formatBytes(stats.imageStats?.totalStorageBytes || 0)}
+            subValue="Images"
+            iconColor="text-pink-500"
+          />
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <StatCard
             icon={Database}
             label="Database"
             value={formatBytes(stats.databaseSizeBytes)}
             subValue="PostgreSQL size"
             iconColor="text-blue-500"
           />
-        </div>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <StatCard
             icon={HardDrive}
             label="Total Storage"
@@ -427,7 +469,8 @@ export function StatsView() {
               stats.totalStorageBytes +
                 stats.databaseSizeBytes +
                 (stats.audioStats?.totalStorageBytes || 0) +
-                (stats.videoStats?.totalStorageBytes || 0)
+                (stats.videoStats?.totalStorageBytes || 0) +
+                (stats.imageStats?.totalStorageBytes || 0)
             )}
             subValue="All files + DB"
             iconColor="text-emerald-500"
@@ -605,6 +648,26 @@ export function StatsView() {
                 <span className="text-muted-foreground">Last 30 days</span>
                 <span className="font-semibold">
                   {stats.recentActivity.videosAddedLast30Days || 0}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="p-4 rounded-lg bg-card border border-border">
+            <div className="flex items-center gap-2 mb-3">
+              <ImageIcon className="w-4 h-4 text-pink-500" />
+              <span className="text-sm font-medium">Images Added</span>
+            </div>
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Last 7 days</span>
+                <span className="font-semibold">
+                  {stats.recentActivity.imagesAddedLast7Days || 0}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Last 30 days</span>
+                <span className="font-semibold">
+                  {stats.recentActivity.imagesAddedLast30Days || 0}
                 </span>
               </div>
             </div>

@@ -12,6 +12,7 @@ import {
   BookOpen,
   Music,
   Video,
+  Image as ImageIcon,
 } from "lucide-react";
 import { useCallback, useState, useEffect } from "react";
 import type {
@@ -27,6 +28,8 @@ import {
   createAudioTrack,
   uploadVideoFile,
   createVideo,
+  uploadImageFile,
+  createImage,
   addItemToMediaFolder,
   fetchSettings,
 } from "@/lib/api/client";
@@ -48,6 +51,7 @@ const AUDIO_EXTENSIONS = [
   "webm",
 ];
 const VIDEO_EXTENSIONS = ["mp4", "webm", "mkv", "mov", "avi", "m4v"];
+const IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp", "avif", "svg"];
 
 // Combined accept string for file input
 const ACCEPTED_FORMATS = [
@@ -67,12 +71,20 @@ const ACCEPTED_FORMATS = [
   ".mov",
   ".avi",
   ".m4v",
+  ".jpg",
+  ".jpeg",
+  ".png",
+  ".gif",
+  ".webp",
+  ".avif",
+  ".svg",
 ].join(",");
 
 // Default max file sizes per category
 const DEFAULT_MAX_BOOK_SIZE_MB = 100;
 const DEFAULT_MAX_AUDIO_SIZE_MB = 500;
 const DEFAULT_MAX_VIDEO_SIZE_MB = 1024;
+const DEFAULT_MAX_IMAGE_SIZE_MB = 50;
 
 // Utility functions
 function generateId(): string {
@@ -92,6 +104,7 @@ function detectMediaType(filename: string): MediaItemType | null {
   if (BOOK_EXTENSIONS.includes(ext)) return "book";
   if (AUDIO_EXTENSIONS.includes(ext)) return "audio";
   if (VIDEO_EXTENSIONS.includes(ext)) return "video";
+  if (IMAGE_EXTENSIONS.includes(ext)) return "image";
   return null;
 }
 
@@ -258,6 +271,7 @@ export function FolderUpload({
   const [maxBookSizeMB, setMaxBookSizeMB] = useState(DEFAULT_MAX_BOOK_SIZE_MB);
   const [maxAudioSizeMB] = useState(DEFAULT_MAX_AUDIO_SIZE_MB);
   const [maxVideoSizeMB] = useState(DEFAULT_MAX_VIDEO_SIZE_MB);
+  const [maxImageSizeMB] = useState(DEFAULT_MAX_IMAGE_SIZE_MB);
 
   // Fetch settings on mount
   useEffect(() => {
@@ -325,14 +339,18 @@ export function FolderUpload({
               ? maxBookSizeMB * 1024 * 1024
               : mediaType === "audio"
                 ? maxAudioSizeMB * 1024 * 1024
-                : maxVideoSizeMB * 1024 * 1024;
+                : mediaType === "video"
+                  ? maxVideoSizeMB * 1024 * 1024
+                  : maxImageSizeMB * 1024 * 1024;
 
           const maxSizeMB =
             mediaType === "book"
               ? maxBookSizeMB
               : mediaType === "audio"
                 ? maxAudioSizeMB
-                : maxVideoSizeMB;
+                : mediaType === "video"
+                  ? maxVideoSizeMB
+                  : maxImageSizeMB;
 
           if (file.size > maxSizeBytes) {
             updateUpload(i, { status: "error", progress: 0 });
@@ -388,8 +406,7 @@ export function FolderUpload({
                 s3Key,
               });
               itemId = track.id;
-            } else {
-              // video
+            } else if (mediaType === "video") {
               const videoId = generateId();
               const format = getVideoFormat(file.name);
 
@@ -413,6 +430,24 @@ export function FolderUpload({
                 originalFilename: file.name,
               });
               itemId = video.id;
+            } else {
+              // image
+              updateUpload(i, { progress: 10 });
+
+              const uploadResult = await uploadImageFile(file, (percent) => {
+                updateUpload(i, { progress: Math.round(10 + percent * 0.65) });
+              });
+
+              updateUpload(i, { progress: 80, status: "processing" });
+
+              const image = await createImage({
+                title,
+                format: uploadResult.format,
+                fileSize: uploadResult.fileSize,
+                s3Key: uploadResult.s3Key,
+                originalFilename: uploadResult.originalFilename,
+              });
+              itemId = image.id;
             }
 
             // Add to folder
@@ -433,7 +468,13 @@ export function FolderUpload({
         if (successCount > 0) {
           const typeLabels = Array.from(addedTypes)
             .map((t) =>
-              t === "book" ? "book" : t === "audio" ? "audio track" : "video"
+              t === "book"
+                ? "book"
+                : t === "audio"
+                  ? "audio track"
+                  : t === "video"
+                    ? "video"
+                    : "image"
             )
             .join(", ");
           toast(
@@ -469,6 +510,7 @@ export function FolderUpload({
       maxBookSizeMB,
       maxAudioSizeMB,
       maxVideoSizeMB,
+      maxImageSizeMB,
     ]
   );
 
@@ -550,6 +592,19 @@ export function FolderUpload({
                       "w-4 h-4 shrink-0",
                       upload.status === "uploading" &&
                         "text-rose-500 animate-pulse",
+                      upload.status === "processing" && "text-amber-500",
+                      upload.status === "adding" && "text-blue-500",
+                      upload.status === "complete" && "text-green-500",
+                      upload.status === "error" && "text-destructive"
+                    )}
+                  />
+                )}
+                {upload.mediaType === "image" && (
+                  <ImageIcon
+                    className={cn(
+                      "w-4 h-4 shrink-0",
+                      upload.status === "uploading" &&
+                        "text-emerald-500 animate-pulse",
                       upload.status === "processing" && "text-amber-500",
                       upload.status === "adding" && "text-blue-500",
                       upload.status === "complete" && "text-green-500",
@@ -641,7 +696,7 @@ export function FolderUpload({
               {isUploading ? "Uploading..." : "Add files to folder"}
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Books (PDF, EPUB), Audio (MP3, M4A, etc.), Video (MP4, MKV, etc.)
+              Books, Audio, Video, or Images
             </p>
           </div>
         </label>
@@ -678,6 +733,14 @@ export function FolderUpload({
               )}
               {upload.mediaType === "video" && (
                 <Video
+                  className={cn(
+                    "w-4 h-4 shrink-0",
+                    upload.status === "complete" && "text-green-500"
+                  )}
+                />
+              )}
+              {upload.mediaType === "image" && (
+                <ImageIcon
                   className={cn(
                     "w-4 h-4 shrink-0",
                     upload.status === "complete" && "text-green-500"

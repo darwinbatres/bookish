@@ -15,5 +15,7 @@ export * from "./listening-sessions";
 export * from "./video-tracks";
 export * from "./video-bookmarks";
 export * from "./video-sessions";
+// Image support (December 2024)
+export * from "./images";
 // Media folders (December 2024)
 export * from "./media-folders";

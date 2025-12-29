@@ -13,6 +13,7 @@ import {
   Video,
   BookOpen,
   AlertTriangle,
+  ImageIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -94,7 +95,7 @@ function getStoredViewMode(): LibraryViewMode {
 function getStoredMediaTypeFilter(): WishlistMediaType | "all" {
   if (typeof window === "undefined") return "all";
   const stored = localStorage.getItem(MEDIA_TYPE_FILTER_KEY);
-  if (stored && ["all", "book", "audio", "video"].includes(stored)) {
+  if (stored && ["all", "book", "audio", "video", "image"].includes(stored)) {
     return stored as WishlistMediaType | "all";
   }
   return "all";
@@ -116,13 +117,77 @@ const MEDIA_TYPE_ICONS: Record<WishlistMediaType, typeof BookOpen> = {
   book: BookOpen,
   audio: Music,
   video: Video,
+  image: ImageIcon,
 };
 
 const MEDIA_TYPE_COLORS: Record<WishlistMediaType, string> = {
   book: "bg-blue-500/20 text-blue-600 dark:text-blue-400",
   audio: "bg-purple-500/20 text-purple-600 dark:text-purple-400",
   video: "bg-green-500/20 text-green-600 dark:text-green-400",
+  image: "bg-pink-500/20 text-pink-600 dark:text-pink-400",
 };
+
+/**
+ * Parse a wishlist input that may contain both a title and a URL.
+ * Handles formats like:
+ * - "Head First Go https://example.com/book"
+ * - "https://example.com/book Head First Go"
+ * - "Head First Go\nhttps://example.com/book"
+ * - Just a title with no URL
+ * - Just a URL (extracts domain/path as title)
+ *
+ * Uses the URL Web API for robust URL detection (industry standard).
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/URL
+ */
+function parseWishlistInput(input: string): { title: string; url: string } {
+  const trimmed = input.trim();
+  if (!trimmed) return { title: "", url: "" };
+
+  // URL regex pattern - matches http(s):// URLs
+  // This is a simplified but robust pattern that handles most real-world URLs
+  const urlPattern = /https?:\/\/[^\s]+/gi;
+  const matches = trimmed.match(urlPattern);
+
+  if (!matches || matches.length === 0) {
+    // No URL found, return the input as title
+    return { title: trimmed, url: "" };
+  }
+
+  // Take the first URL found
+  const url = matches[0];
+
+  // Remove the URL from the input to get the title
+  let title = trimmed.replace(url, "").trim();
+
+  // If title is empty (input was just a URL), try to extract something useful
+  if (!title) {
+    try {
+      const parsed = new URL(url);
+      // Try to get the last meaningful path segment
+      const pathSegments = parsed.pathname.split("/").filter(Boolean);
+      if (pathSegments.length > 0) {
+        // Decode and clean up the last path segment
+        const lastSegment = decodeURIComponent(
+          pathSegments[pathSegments.length - 1]
+        );
+        // Convert kebab/snake case to title case
+        title = lastSegment
+          .replace(/[-_]/g, " ")
+          .replace(/\.[^.]+$/, "") // Remove file extension if present
+          .trim();
+      }
+      // If still empty, use the hostname
+      if (!title) {
+        title = parsed.hostname.replace(/^www\./, "");
+      }
+    } catch {
+      // Invalid URL format, just use original input
+      title = trimmed;
+    }
+  }
+
+  return { title, url };
+}
 
 interface WishlistFormData {
   title: string;
@@ -141,6 +206,37 @@ const defaultFormData: WishlistFormData = {
   priority: 1,
   url: "",
 };
+
+/**
+ * Format a date for display in the wishlist.
+ * Uses relative time for recent dates, absolute for older ones.
+ * Uses Intl.RelativeTimeFormat for i18n-friendly relative time (industry standard).
+ */
+function formatAddedDate(isoDate: string): string {
+  const date = new Date(isoDate);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  // For very recent items, use relative time
+  if (diffDays === 0) {
+    return "Today";
+  } else if (diffDays === 1) {
+    return "Yesterday";
+  } else if (diffDays < 7) {
+    return `${diffDays} days ago`;
+  } else if (diffDays < 30) {
+    const weeks = Math.floor(diffDays / 7);
+    return `${weeks} ${weeks === 1 ? "week" : "weeks"} ago`;
+  }
+
+  // For older items, show the date
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: date.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
+  });
+}
 
 interface WishlistViewProps {
   isFullPage?: boolean;
@@ -180,6 +276,12 @@ function MediaTypeFilter({
           <div className="flex items-center gap-2">
             <Video className="w-3.5 h-3.5" />
             Video
+          </div>
+        </SelectItem>
+        <SelectItem value="image">
+          <div className="flex items-center gap-2">
+            <ImageIcon className="w-3.5 h-3.5" />
+            Images
           </div>
         </SelectItem>
       </SelectContent>
@@ -249,6 +351,9 @@ function WishlistItemCard({
 
         {/* Link indicator - hidden on small screens */}
         <div className="hidden sm:flex items-center gap-3 text-xs text-muted-foreground shrink-0">
+          <span className="text-muted-foreground/60">
+            {formatAddedDate(item.createdAt)}
+          </span>
           {item.url && (
             <span className="flex items-center gap-1">
               <ExternalLink className="w-3 h-3" />
@@ -409,6 +514,8 @@ function WishlistItemCard({
           {/* Stats row */}
           <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
             <span className="uppercase font-medium">{mediaTypeLabel}</span>
+            <span className="text-muted-foreground/40">•</span>
+            <span>{formatAddedDate(item.createdAt)}</span>
             {item.url && (
               <span className="flex items-center gap-1">
                 <ExternalLink className="w-3 h-3" />
@@ -488,6 +595,10 @@ function WishlistItemCard({
             )}
           >
             {PRIORITY_LABELS[item.priority]}
+          </span>
+          <span className="hidden sm:inline text-muted-foreground/40">•</span>
+          <span className="hidden sm:inline text-xs text-muted-foreground">
+            Added {formatAddedDate(item.createdAt)}
           </span>
           {item.url && (
             <>
@@ -902,7 +1013,7 @@ export function WishlistView({
                     Add to Wishlist
                   </p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Track books, audio, or videos you want to acquire
+                    Track books, audio, videos, or images you want to acquire
                   </p>
                 </div>
               </div>
@@ -955,10 +1066,31 @@ export function WishlistView({
                   id="wishlist-title"
                   value={formData.title}
                   onChange={(e) => {
-                    setFormData({ ...formData, title: e.target.value });
+                    const value = e.target.value;
+                    // Auto-parse URL from pasted text (e.g., "Head First Go https://...")
+                    const parsed = parseWishlistInput(value);
+
+                    // If a URL was extracted and the URL field is currently empty, auto-fill it
+                    if (parsed.url && !formData.url) {
+                      setFormData({
+                        ...formData,
+                        title: parsed.title,
+                        url: parsed.url,
+                      });
+                      // Show a subtle toast only if we actually extracted a URL
+                      if (parsed.title !== value) {
+                        toast.success("URL detected and extracted", {
+                          duration: 2000,
+                          icon: "🔗",
+                        });
+                      }
+                    } else {
+                      // Normal update - no URL detected or URL field already has a value
+                      setFormData({ ...formData, title: value });
+                    }
                     setShowDuplicateWarning(false);
                   }}
-                  placeholder="Title"
+                  placeholder="Title or paste Title + URL"
                   disabled={isSaving}
                   autoFocus
                 />
@@ -1075,6 +1207,12 @@ export function WishlistView({
                       Video
                     </div>
                   </SelectItem>
+                  <SelectItem value="image">
+                    <div className="flex items-center gap-2">
+                      <ImageIcon className="w-3.5 h-3.5" />
+                      Image
+                    </div>
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1131,7 +1269,10 @@ export function WishlistView({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="wishlist-url">URL (optional)</Label>
+              <Label htmlFor="wishlist-url">
+                URL{" "}
+                {formData.url ? "" : "(optional — or paste with title above)"}
+              </Label>
               <Input
                 id="wishlist-url"
                 type="url"

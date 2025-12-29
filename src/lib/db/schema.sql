@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS wishlist (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     title VARCHAR(500) NOT NULL,
     author VARCHAR(500),
-    media_type VARCHAR(20) NOT NULL DEFAULT 'book' CHECK (media_type IN ('book', 'audio', 'video')),
+    media_type VARCHAR(20) NOT NULL DEFAULT 'book' CHECK (media_type IN ('book', 'audio', 'video', 'image')),
     notes TEXT,
     priority INTEGER NOT NULL DEFAULT 0 CHECK (priority >= 0 AND priority <= 2),
     -- 0 = low, 1 = medium, 2 = high

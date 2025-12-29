@@ -10,6 +10,7 @@ import {
   Gauge,
   Music,
   Video,
+  Image,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -36,6 +37,7 @@ const MAX_FILE_SIZE_OPTIONS = [25, 50, 100, 200, 500, 1024, 2048];
 const MAX_COVER_SIZE_OPTIONS = [1, 2, 5, 10, 20, 50];
 const MAX_AUDIO_SIZE_OPTIONS = [100, 200, 500, 1024, 2048];
 const MAX_VIDEO_SIZE_OPTIONS = [200, 500, 1024, 2048, 4096];
+const MAX_IMAGE_SIZE_OPTIONS = [10, 25, 50, 75, 100];
 const VIEW_MODE_OPTIONS: { value: LibraryViewMode; label: string }[] = [
   { value: "list", label: "List View" },
   { value: "grid", label: "Grid View" },
@@ -192,6 +194,34 @@ export function SettingsView() {
       });
     } catch (error) {
       console.error("[Settings] Failed to update max video size:", error);
+      toast.error("Failed to update setting");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleMaxImageSizeChange = async (size: string) => {
+    const newSize = parseInt(size, 10);
+    setIsSaving(true);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ images: { maxSizeMB: newSize } }),
+      });
+      if (!res.ok) throw new Error("Failed to update setting");
+
+      // Update local state
+      setSettings((prev) =>
+        prev
+          ? { ...prev, images: { ...prev.images, maxSizeMB: newSize } }
+          : prev
+      );
+      toast.success("Max image file size updated", {
+        description: `Image files up to ${newSize} MB can now be uploaded.`,
+      });
+    } catch (error) {
+      console.error("[Settings] Failed to update max image size:", error);
       toast.error("Failed to update setting");
     } finally {
       setIsSaving(false);
@@ -485,6 +515,61 @@ export function SettingsView() {
               </span>
               <div className="flex flex-wrap gap-1 justify-end">
                 {["MP4", "WebM", "MKV", "MOV", "AVI"].map((type) => (
+                  <Badge key={type} variant="outline">
+                    {type}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Image Settings */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Image className="w-4 h-4" />
+              Image Settings
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="max-image-size">Max Image File Size</Label>
+              <Select
+                value={String(settings?.images?.maxSizeMB || 50)}
+                onValueChange={handleMaxImageSizeChange}
+                disabled={isSaving}
+              >
+                <SelectTrigger id="max-image-size" className="w-full">
+                  {isSaving ? (
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Saving...</span>
+                    </div>
+                  ) : (
+                    <SelectValue />
+                  )}
+                </SelectTrigger>
+                <SelectContent>
+                  {MAX_IMAGE_SIZE_OPTIONS.map((size) => (
+                    <SelectItem key={size} value={String(size)}>
+                      {size} MB
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Maximum allowed size for image file uploads (JPEG, PNG, WebP,
+                etc.)
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">
+                Allowed Formats
+              </span>
+              <div className="flex flex-wrap gap-1 justify-end">
+                {["JPEG", "PNG", "WebP", "GIF", "AVIF", "SVG"].map((type) => (
                   <Badge key={type} variant="outline">
                     {type}
                   </Badge>

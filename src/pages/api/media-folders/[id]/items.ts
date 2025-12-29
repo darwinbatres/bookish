@@ -27,7 +27,7 @@ import type {
 } from "@/types";
 
 const addItemSchema = z.object({
-  itemType: z.enum(["book", "audio", "video"]),
+  itemType: z.enum(["book", "audio", "video", "image"]),
   itemId: z.string().uuid(),
   notes: z.string().max(5000).optional(),
 });
@@ -40,7 +40,7 @@ const updateItemSchema = z.object({
 
 const removeItemSchema = z.object({
   itemId: z.string().uuid(),
-  itemType: z.enum(["book", "audio", "video"]).optional(),
+  itemType: z.enum(["book", "audio", "video", "image"]).optional(),
 });
 
 const reorderItemsSchema = z.object({

@@ -7,14 +7,15 @@
 
 ## Project Overview
 
-This is a personal book and audio reader application built with Next.js 16 using the **Pages Router** pattern. The app allows users to upload, manage, and read PDF and EPUB books, as well as listen to audiobooks and podcasts, with features like bookmarks, notes, reading/listening time tracking, favorites, wishlists, collections, custom covers, and completion celebrations.
+This is a personal book and audio reader application built with Next.js 16 using the **Pages Router** pattern. The app allows users to upload, manage, and read PDF and EPUB books, as well as listen to audiobooks and podcasts, watch videos, and organize images—with features like bookmarks, notes, reading/listening time tracking, favorites, wishlists, collections, custom covers, and completion celebrations.
 
 **Media Types Supported:**
 
 - **Books**: PDF and EPUB formats with reading progress tracking
 - **Audio**: MP3, M4A, WAV, OGG, FLAC, AAC, WEBM formats with playback controls
 - **Video**: MP4, WEBM, MKV, MOV, AVI, M4V formats with playback controls
-- **Media Folders**: Organize any combination of books, audio, and video into folders
+- **Images**: JPEG, PNG, WebP, GIF, AVIF, SVG formats with view tracking and albums
+- **Media Folders**: Organize any combination of books, audio, video, and images into folders
 
 ## Tech Stack
 
@@ -64,6 +65,8 @@ src/
 │   │   │   └── 005-video-support.sql
 │   │   │   └── 006-media-folders.sql
 │   │   │   └── 007-wishlist-media-type.sql
+│   │   │   └── 008-images-support.sql
+│   │   │   └── 009-wishlist-image-type.sql
 │   │   ├── repositories/    # CRUD operations
 │   │   │   ├── books.ts
 │   │   │   ├── bookmarks.ts
@@ -80,6 +83,7 @@ src/
 │   │   │   ├── video-tracks.ts    # Video track CRUD
 │   │   │   ├── video-bookmarks.ts # Video timestamp bookmarks
 │   │   │   ├── video-sessions.ts  # Video watching sessions
+│   │   │   ├── images.ts          # Image CRUD operations
 │   │   │   ├── media-folders.ts   # Media folder management
 │   │   │   └── stats.ts           # Storage and library statistics
 │   │   └── index.ts         # Barrel export
@@ -93,9 +97,12 @@ src/
 │   │   ├── auth/    # Authentication endpoints
 │   │   ├── books/   # Book endpoints (upload, cover-upload, stream, etc.)
 │   │   ├── audio/   # Audio endpoints (upload, stream, download, etc.)
+│   │   ├── video/   # Video endpoints (upload, stream, download, etc.)
+│   │   ├── images/  # Image endpoints (upload, stream, metadata, etc.)
 │   │   ├── playlists/ # Playlist endpoints
+│   │   ├── media-folders/ # Media folder endpoints
 │   │   ├── collections/ # Collection endpoints
-│   │   ├── wishlist/    # Wishlist endpoints
+│   │   ├── wishlist/    # Wishlist endpoints (supports book/audio/video/image types)
 │   │   ├── settings.ts  # App settings
 │   │   ├── stats.ts     # Storage statistics
 │   │   └── health.ts
@@ -108,6 +115,7 @@ src/
     ├── book.ts      # Book types (DBBook, DBBookmark, DBNote, DBCollection, DBWishlistItem, etc.)
     ├── audio.ts     # Audio types (DBAudioTrack, DBPlaylist, etc.)
     ├── video.ts     # Video types (DBVideoTrack, DBVideoBookmark, DBVideoSession)
+    ├── image.ts     # Image types (DBImage, CreateImageInput, UpdateImageInput)
     ├── media-folder.ts # Media folder types (DBMediaFolder, DBMediaFolderItem, DBMediaFolderItemWithDetails)
     └── index.ts     # Barrel export
 ```
@@ -213,8 +221,8 @@ Located in `src/pages/api/`:
 ### Wishlist
 
 - `GET /api/wishlist` - List all wishlist items (supports pagination, search, mediaType filter)
-- `POST /api/wishlist` - Add item to wishlist (supports book/audio/video types)
-- `GET /api/wishlist/check-duplicates` - Search for duplicate titles in library
+- `POST /api/wishlist` - Add item to wishlist (supports book/audio/video/image types, auto-parses title+URL input)
+- `GET /api/wishlist/check-duplicates` - Search for duplicate titles in library (includes images)
 - `GET /api/wishlist/:id` - Get a wishlist item
 - `PATCH /api/wishlist/:id` - Update a wishlist item
 - `DELETE /api/wishlist/:id` - Remove from wishlist
@@ -268,6 +276,17 @@ Located in `src/pages/api/`:
 - `POST /api/video/:id/sessions` - Start watching session
 - `PATCH /api/video/:id/sessions` - End watching session
 
+### Images
+
+- `GET /api/images` - List images (supports pagination, search, sorting, album filter)
+- `POST /api/images` - Create image record
+- `POST /api/images/upload` - Upload image file (proxied to S3)
+- `GET /api/images/stream` - Stream image file from S3
+- `GET /api/images/metadata` - Get unique albums/tags for autocomplete
+- `GET /api/images/:id` - Get a single image
+- `PATCH /api/images/:id` - Update image (title, description, album, tags, favorite)
+- `DELETE /api/images/:id` - Delete image (and S3 file, removes from all folders)
+
 ### Media Folders
 
 - `GET /api/media-folders` - List all media folders
@@ -276,14 +295,14 @@ Located in `src/pages/api/`:
 - `PATCH /api/media-folders/:id` - Update a media folder (name, description, color, icon)
 - `DELETE /api/media-folders/:id` - Delete a media folder (items remain in library)
 - `GET /api/media-folders/:id/items` - Get items in a folder (with details)
-- `POST /api/media-folders/:id/items` - Add item to folder (book, audio, or video)
+- `POST /api/media-folders/:id/items` - Add item to folder (book, audio, video, or image)
 - `DELETE /api/media-folders/:id/items` - Remove item from folder
 - `PATCH /api/media-folders/:id/items` - Update item (notes, sortOrder)
 
 **Cascading Behavior:**
 
 - Deleting a **folder** removes the folder and its item references, but keeps the actual files in the library
-- Deleting a **book/audio/video** from the library automatically removes it from all folders
+- Deleting a **book/audio/video/image** from the library automatically removes it from all folders
 - Stats are always accurate (calculated dynamically from database, not cached)
 
 ### API Pattern
@@ -315,7 +334,7 @@ export default async function handler(
 - `StatsView` - Storage and library analytics dashboard
 - `SettingsView` - Application settings management
 - `CollectionsView` - Manage book collections
-- `WishlistView` - Manage wishlist items (books, audio, video with duplicate detection)
+- `WishlistView` - Manage wishlist items (books, audio, video, images with duplicate detection, URL auto-parsing, added date display)
 - `EditBookModal` - Modal for editing book details and favorites
 - `ReaderView` - Reading interface (supports PDF and EPUB)
 - `PdfReader` - PDF rendering with react-pdf
@@ -334,8 +353,14 @@ export default async function handler(
 - `VideoUpload` - Video file upload component
 - `VideoEditModal` - Modal for editing video track details
 - `VideoCover` - Video thumbnail/cover display
-- `MediaFoldersView` - Media folder management with folder contents, pagination, filtering, markdown notes, and playable items
-- `FolderUpload` - Unified multi-type upload for folders (books, audio, video) with auto-add to folder
+- `ImageLibraryView` - Image gallery with grid, cards, and compact views
+- `ImageCard` - Individual image display card with preview
+- `ImageUpload` - Image file upload component
+- `ImageEditModal` - Modal for editing image details (title, album, tags)
+- `ImageCover` - Image thumbnail/cover display with lazy loading
+- `ImageViewer` - Full-screen image viewer with zoom and navigation
+- `MediaFoldersView` - Media folder management with folder contents, pagination, filtering by type (books, audio, video, images), markdown notes, and playable/viewable items
+- `FolderUpload` - Unified multi-type upload for folders (books, audio, video, images) with auto-add to folder
 
 ## S3 Integration
 
@@ -413,7 +438,11 @@ See `.env.example` for all variables. Key ones:
 
 Some settings are stored in the database (not env vars) and configurable via the Settings UI:
 
-- **Max file upload size** - Default 100 MB, configurable from 1 MB to 2 GB
+- **Max book file upload size** - Default 100 MB, configurable from 1 MB to 2 GB
+- **Max cover image size** - Default 5 MB, configurable from 1 MB to 50 MB
+- **Max audio file size** - Default 500 MB, configurable from 100 MB to 2 GB
+- **Max video file size** - Default 2 GB, configurable from 200 MB to 4 GB
+- **Max image file size** - Default 50 MB, configurable from 10 MB to 100 MB
 
 These are stored in the `app_settings` table and managed via `/api/settings` endpoint.
 

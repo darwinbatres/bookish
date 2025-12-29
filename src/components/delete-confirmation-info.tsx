@@ -3,7 +3,7 @@ import { fetchItemReferences, type ItemReferences } from "@/lib/api/client";
 import { FolderOpen, ListMusic, Heart, Loader2 } from "lucide-react";
 
 interface DeleteConfirmationInfoProps {
-  itemType: "book" | "audio" | "video";
+  itemType: "book" | "audio" | "video" | "image";
   itemId: string;
   isFavorite?: boolean;
 }
