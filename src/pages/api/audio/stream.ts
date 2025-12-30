@@ -13,6 +13,24 @@ export const config = {
   },
 };
 
+// Timeout for S3 operations (30 seconds - well under Cloudflare's 100s limit)
+const S3_TIMEOUT_MS = 30000;
+
+// Stream idle timeout (if no data flows for this long, abort)
+const STREAM_IDLE_TIMEOUT_MS = 15000;
+
+/**
+ * Wrap a promise with a timeout
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(message)), ms)
+    ),
+  ]);
+}
+
 /**
  * Parse HTTP Range header
  * Format: "bytes=start-end" or "bytes=start-"
@@ -78,10 +96,35 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
     });
   }
 
+  // Track if we've started streaming (for cleanup)
+  let streamStarted = false;
+  let stream: Readable | null = null;
+  let idleTimer: NodeJS.Timeout | null = null;
+
+  // Cleanup function
+  const cleanup = () => {
+    if (idleTimer) {
+      clearTimeout(idleTimer);
+      idleTimer = null;
+    }
+    if (stream) {
+      stream.destroy();
+      stream = null;
+    }
+  };
+
+  // Handle client disconnect
+  req.on("close", () => {
+    if (streamStarted) {
+      console.log("[API] Client disconnected, cleaning up audio stream");
+      cleanup();
+    }
+  });
+
   try {
     const client = getS3Client();
 
-    // First, get the file metadata to know the size
+    // First, get the file metadata to know the size (with timeout)
     const headCommand = new HeadObjectCommand({
       Bucket: appConfig.s3.bucket,
       Key: s3Key,
@@ -91,10 +134,34 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
     let contentType: string;
 
     try {
-      const headResponse = await client.send(headCommand);
+      const headResponse = await withTimeout(
+        client.send(headCommand),
+        S3_TIMEOUT_MS,
+        "S3 metadata request timed out"
+      );
       fileSize = headResponse.ContentLength || 0;
       contentType = headResponse.ContentType || "audio/mpeg";
-    } catch {
+
+      // Validate file size - reject empty or suspiciously small files
+      if (fileSize === 0) {
+        return res.status(404).json({
+          error: "Not Found",
+          message: "Audio file is empty or corrupted",
+          statusCode: 404,
+        });
+      }
+    } catch (error) {
+      const err = error as Error;
+      if (err.message?.includes("timed out")) {
+        console.error("[API] S3 HEAD request timed out for:", s3Key);
+        return res.status(504).json({
+          error: "Gateway Timeout",
+          message: "Storage service is slow or unavailable",
+          statusCode: 504,
+        });
+      }
+      // NoSuchKey or other S3 errors
+      console.error("[API] S3 HEAD error:", err.message);
       return res.status(404).json({
         error: "Not Found",
         message: "Audio file not found",
@@ -125,12 +192,31 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
       Range: range ? `bytes=${range.start}-${range.end}` : undefined,
     });
 
-    const response = await client.send(getCommand);
+    // Get the object with timeout
+    let response;
+    try {
+      response = await withTimeout(
+        client.send(getCommand),
+        S3_TIMEOUT_MS,
+        "S3 download request timed out"
+      );
+    } catch (error) {
+      const err = error as Error;
+      if (err.message?.includes("timed out")) {
+        console.error("[API] S3 GET request timed out for:", s3Key);
+        return res.status(504).json({
+          error: "Gateway Timeout",
+          message: "Storage service is slow or unavailable",
+          statusCode: 504,
+        });
+      }
+      throw error;
+    }
 
     if (!response.Body) {
       return res.status(500).json({
         error: "Internal Server Error",
-        message: "Failed to stream audio file",
+        message: "Failed to stream audio file - no body returned",
         statusCode: 500,
       });
     }
@@ -155,28 +241,63 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
       res.status(200);
     }
 
-    // Stream the response
-    const stream = response.Body as Readable;
-    stream.pipe(res);
+    // Mark streaming as started
+    streamStarted = true;
+    stream = response.Body as Readable;
+
+    // Reset idle timer on each data chunk
+    const resetIdleTimer = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        console.error("[API] Audio stream idle timeout for:", s3Key);
+        cleanup();
+        if (!res.writableEnded) {
+          res.end();
+        }
+      }, STREAM_IDLE_TIMEOUT_MS);
+    };
+
+    // Start idle timer
+    resetIdleTimer();
+
+    // Handle data flow
+    stream.on("data", () => {
+      resetIdleTimer();
+    });
+
+    // Handle stream completion
+    stream.on("end", () => {
+      cleanup();
+    });
 
     // Handle stream errors
     stream.on("error", (error) => {
       console.error("[API] Audio stream error:", error);
+      cleanup();
       if (!res.headersSent) {
         res.status(500).json({
           error: "Internal Server Error",
-          message: "Stream error",
+          message: "Stream error while reading audio file",
           statusCode: 500,
         });
+      } else if (!res.writableEnded) {
+        res.end();
       }
     });
+
+    // Pipe the stream to response
+    stream.pipe(res);
+
   } catch (error) {
+    cleanup();
     console.error("[API] Audio stream error:", error);
-    return res.status(500).json({
-      error: "Internal Server Error",
-      message: "Failed to stream audio file",
-      statusCode: 500,
-    });
+    if (!res.headersSent) {
+      return res.status(500).json({
+        error: "Internal Server Error",
+        message: "Failed to stream audio file",
+        statusCode: 500,
+      });
+    }
   }
 }
 

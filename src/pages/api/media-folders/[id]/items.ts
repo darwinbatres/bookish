@@ -89,7 +89,7 @@ async function handler(
         const paginatedItems = await getFolderItemsWithPagination(id, {
           page: page ? parseInt(page as string, 10) : 1,
           limit: limit ? parseInt(limit as string, 10) : 20,
-          itemType: itemType as "book" | "audio" | "video" | undefined,
+          itemType: itemType as "book" | "audio" | "video" | "image" | undefined,
           search: typeof search === "string" ? search : undefined,
         });
         return res.status(200).json(paginatedItems);

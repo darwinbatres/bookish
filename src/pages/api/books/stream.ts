@@ -1,10 +1,11 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { z } from "zod";
-import { getS3Client, fileExistsInS3, isS3Configured } from "@/lib/s3";
-import { GetObjectCommand } from "@aws-sdk/client-s3";
+import { getS3Client, isS3Configured } from "@/lib/s3";
+import { GetObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 import { withAuth } from "@/lib/api";
 import { config as appConfig } from "@/lib/config";
 import type { ApiError } from "@/types";
+import type { Readable } from "stream";
 
 // Next.js API config: disable response size limit for streaming large files
 export const config = {
@@ -12,6 +13,24 @@ export const config = {
     responseLimit: false,
   },
 };
+
+// Timeout for S3 operations (30 seconds - well under Cloudflare's 100s limit)
+const S3_TIMEOUT_MS = 30000;
+
+// Stream idle timeout (if no data flows for this long, abort)
+const STREAM_IDLE_TIMEOUT_MS = 15000;
+
+/**
+ * Wrap a promise with a timeout
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(message)), ms)
+    ),
+  ]);
+}
 
 // Request validation schema
 const streamSchema = z.object({
@@ -51,43 +70,105 @@ async function handler(
     });
   }
 
+  // Validate query params
+  const result = streamSchema.safeParse(req.query);
+
+  if (!result.success) {
+    return res.status(400).json({
+      error: "Bad Request",
+      message: result.error.issues.map((e) => e.message).join(", "),
+      statusCode: 400,
+    });
+  }
+
+  const { s3Key } = result.data;
+
+  // Security: Validate s3Key format to prevent directory traversal
+  // Allow books/*, covers/*, audio/*, audio-covers/*, video/*, video-covers/*, images/*, and folder-covers/* paths
+  const isValidPath =
+    !s3Key.includes("..") &&
+    (s3Key.startsWith("books/") ||
+      s3Key.startsWith("covers/") ||
+      s3Key.startsWith("audio/") ||
+      s3Key.startsWith("audio-covers/") ||
+      s3Key.startsWith("video/") ||
+      s3Key.startsWith("video-covers/") ||
+      s3Key.startsWith("images/") ||
+      s3Key.startsWith("folder-covers/"));
+
+  if (!isValidPath) {
+    return res.status(400).json({
+      error: "Bad Request",
+      message: "Invalid S3 key format",
+      statusCode: 400,
+    });
+  }
+
+  // Track if we've started streaming (for cleanup)
+  let streamStarted = false;
+  let stream: Readable | null = null;
+  let idleTimer: NodeJS.Timeout | null = null;
+
+  // Cleanup function
+  const cleanup = () => {
+    if (idleTimer) {
+      clearTimeout(idleTimer);
+      idleTimer = null;
+    }
+    if (stream) {
+      stream.destroy();
+      stream = null;
+    }
+  };
+
+  // Handle client disconnect
+  req.on("close", () => {
+    if (streamStarted) {
+      cleanup();
+    }
+  });
+
   try {
-    // Validate query params
-    const result = streamSchema.safeParse(req.query);
+    const client = getS3Client();
 
-    if (!result.success) {
-      return res.status(400).json({
-        error: "Bad Request",
-        message: result.error.issues.map((e) => e.message).join(", "),
-        statusCode: 400,
-      });
-    }
+    // First check if file exists and get metadata (with timeout)
+    const headCommand = new HeadObjectCommand({
+      Bucket: appConfig.s3.bucket,
+      Key: s3Key,
+    });
 
-    const { s3Key } = result.data;
+    let fileSize: number;
+    let contentType: string | undefined;
 
-    // Security: Validate s3Key format to prevent directory traversal
-    // Allow books/*, covers/*, audio/*, audio-covers/*, video/*, video-covers/*, and folder-covers/* paths
-    const isValidPath =
-      !s3Key.includes("..") &&
-      (s3Key.startsWith("books/") ||
-        s3Key.startsWith("covers/") ||
-        s3Key.startsWith("audio/") ||
-        s3Key.startsWith("audio-covers/") ||
-        s3Key.startsWith("video/") ||
-        s3Key.startsWith("video-covers/") ||
-        s3Key.startsWith("folder-covers/"));
+    try {
+      const headResponse = await withTimeout(
+        client.send(headCommand),
+        S3_TIMEOUT_MS,
+        "S3 metadata request timed out"
+      );
+      fileSize = headResponse.ContentLength || 0;
+      contentType = headResponse.ContentType;
 
-    if (!isValidPath) {
-      return res.status(400).json({
-        error: "Bad Request",
-        message: "Invalid S3 key format",
-        statusCode: 400,
-      });
-    }
-
-    // Check if file exists
-    const exists = await fileExistsInS3(s3Key);
-    if (!exists) {
+      // Reject empty files
+      if (fileSize === 0) {
+        return res.status(404).json({
+          error: "Not Found",
+          message: "File is empty or corrupted",
+          statusCode: 404,
+        });
+      }
+    } catch (error) {
+      const err = error as Error;
+      if (err.message?.includes("timed out")) {
+        console.error("[API] S3 HEAD request timed out for:", s3Key);
+        return res.status(504).json({
+          error: "Gateway Timeout",
+          message: "Storage service is slow or unavailable",
+          statusCode: 504,
+        });
+      }
+      // NoSuchKey or other S3 errors
+      console.error("[API] S3 HEAD error for", s3Key, ":", err.message);
       return res.status(404).json({
         error: "Not Found",
         message: "File not found in storage",
@@ -95,14 +176,31 @@ async function handler(
       });
     }
 
-    // Get file from S3
-    const client = getS3Client();
+    // Get file from S3 (with timeout)
     const command = new GetObjectCommand({
       Bucket: appConfig.s3.bucket,
       Key: s3Key,
     });
 
-    const response = await client.send(command);
+    let response;
+    try {
+      response = await withTimeout(
+        client.send(command),
+        S3_TIMEOUT_MS,
+        "S3 download request timed out"
+      );
+    } catch (error) {
+      const err = error as Error;
+      if (err.message?.includes("timed out")) {
+        console.error("[API] S3 GET request timed out for:", s3Key);
+        return res.status(504).json({
+          error: "Gateway Timeout",
+          message: "Storage service is slow or unavailable",
+          statusCode: 504,
+        });
+      }
+      throw error;
+    }
 
     if (!response.Body) {
       return res.status(500).json({
@@ -112,39 +210,88 @@ async function handler(
       });
     }
 
-    // Determine content type from file extension
-    const ext = s3Key.split(".").pop()?.toLowerCase();
-    const contentTypes: Record<string, string> = {
-      // Books
-      pdf: "application/pdf",
-      epub: "application/epub+zip",
-      // Cover images
-      jpg: "image/jpeg",
-      jpeg: "image/jpeg",
-      png: "image/png",
-      webp: "image/webp",
-      gif: "image/gif",
-    };
-    const contentType = contentTypes[ext || ""] || "application/octet-stream";
+    // Determine content type from file extension if not provided by S3
+    if (!contentType) {
+      const ext = s3Key.split(".").pop()?.toLowerCase();
+      const contentTypes: Record<string, string> = {
+        // Books
+        pdf: "application/pdf",
+        epub: "application/epub+zip",
+        // Cover images
+        jpg: "image/jpeg",
+        jpeg: "image/jpeg",
+        png: "image/png",
+        webp: "image/webp",
+        gif: "image/gif",
+        avif: "image/avif",
+        svg: "image/svg+xml",
+      };
+      contentType = contentTypes[ext || ""] || "application/octet-stream";
+    }
 
     // Set response headers
     res.setHeader("Content-Type", contentType);
-    if (response.ContentLength) {
-      res.setHeader("Content-Length", response.ContentLength);
-    }
+    res.setHeader("Content-Length", fileSize);
     // Cache for 1 hour (files don't change once uploaded)
     res.setHeader("Cache-Control", "private, max-age=3600");
 
-    // Stream the response
-    const stream = response.Body as NodeJS.ReadableStream;
-    stream.pipe(res);
-  } catch (error) {
-    console.error("[API] Error streaming file:", error);
-    return res.status(500).json({
-      error: "Internal Server Error",
-      message: "Failed to stream file",
-      statusCode: 500,
+    // Mark streaming as started
+    streamStarted = true;
+    stream = response.Body as Readable;
+
+    // Reset idle timer on each data chunk
+    const resetIdleTimer = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        console.error("[API] Stream idle timeout for:", s3Key);
+        cleanup();
+        if (!res.writableEnded) {
+          res.end();
+        }
+      }, STREAM_IDLE_TIMEOUT_MS);
+    };
+
+    // Start idle timer
+    resetIdleTimer();
+
+    // Handle data flow
+    stream.on("data", () => {
+      resetIdleTimer();
     });
+
+    // Handle stream completion
+    stream.on("end", () => {
+      cleanup();
+    });
+
+    // Handle stream errors
+    stream.on("error", (error) => {
+      console.error("[API] Stream error for", s3Key, ":", error);
+      cleanup();
+      if (!res.headersSent) {
+        res.status(500).json({
+          error: "Internal Server Error",
+          message: "Stream error while reading file",
+          statusCode: 500,
+        });
+      } else if (!res.writableEnded) {
+        res.end();
+      }
+    });
+
+    // Pipe the stream to response
+    stream.pipe(res);
+
+  } catch (error) {
+    cleanup();
+    console.error("[API] Error streaming file:", error);
+    if (!res.headersSent) {
+      return res.status(500).json({
+        error: "Internal Server Error",
+        message: "Failed to stream file",
+        statusCode: 500,
+      });
+    }
   }
 }
 

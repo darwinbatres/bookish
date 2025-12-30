@@ -184,6 +184,18 @@ export default function Home() {
     },
   });
 
+  // Show toast and close player when audio fails to load
+  useEffect(() => {
+    if (playerState.error && currentTrack) {
+      toast.error(`Failed to load: ${currentTrack.title}`, {
+        description: "The file may be corrupted or unavailable",
+      });
+      // Clear the current track to close the player
+      setCurrentTrack(null);
+      setAudioStreamUrl(null);
+    }
+  }, [playerState.error, currentTrack]);
+
   // Media session for OS-level controls
   // Convert cover S3 key to signed URL for media session artwork
   useEffect(() => {
